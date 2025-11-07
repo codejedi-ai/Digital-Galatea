@@ -4,12 +4,29 @@ import time
 from dotenv import load_dotenv
 import logging
 from threading import Thread
+import nltk
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load environment variables
 load_dotenv()
+
+# Download required NLTK data on startup
+def download_nltk_data():
+    """Download all required NLTK data for the application"""
+    required_data = ['punkt', 'vader_lexicon']
+    for data_name in required_data:
+        try:
+            nltk.data.find(f'tokenizers/{data_name}' if data_name == 'punkt' else f'sentiment/{data_name}.zip')
+            logging.info(f"NLTK data '{data_name}' already downloaded")
+        except LookupError:
+            logging.info(f"Downloading NLTK data: {data_name}")
+            nltk.download(data_name, quiet=True)
+            logging.info(f"Successfully downloaded NLTK data: {data_name}")
+
+# Download NLTK data before app initialization
+download_nltk_data()
 
 # Initialize Flask app
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -25,7 +42,7 @@ max_init_retries = 3
 current_init_retry = 0
 
 # Check for required environment variables
-required_env_vars = ['GOOGLE_API_KEY']
+required_env_vars = ['GEMINI_API_KEY']
 missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
 if missing_vars:
     logging.error(f"Missing required environment variables: {', '.join(missing_vars)}")
@@ -42,13 +59,14 @@ def initialize_gemini():
         return False
         
     try:
-        # Check for GOOGLE_API_KEY
-        if not os.environ.get('GOOGLE_API_KEY'):
-            logging.error("GOOGLE_API_KEY not found in environment variables")
+        # Check for GEMINI_API_KEY
+        if not os.environ.get('GEMINI_API_KEY'):
+            logging.error("GEMINI_API_KEY not found in environment variables")
             return False
             
         # Try to initialize Gemini specifically
-        gemini_success = galatea_ai.initialize_gemini_api()
+        galatea_ai.initialize_gemini()
+        gemini_success = hasattr(galatea_ai, 'gemini_available') and galatea_ai.gemini_available
         
         if gemini_success:
             gemini_initialized = True
@@ -350,7 +368,12 @@ def status():
 if __name__ == '__main__':
     print("Starting Galatea Web Interface...")
     print("The chatbot will initialize in the background when first accessed.")
-    print("Open your browser and navigate to http://127.0.0.1:5000")
+
     # Add debug logs for avatar shape changes
     logging.info("Avatar system initialized with default shape.")
-    app.run(debug=True, port=5000)
+
+    # Get port from environment variable (for Hugging Face Spaces compatibility)
+    port = int(os.environ.get('PORT', 7860))
+
+    # Bind to 0.0.0.0 for external access (required for Hugging Face Spaces)
+    app.run(host='0.0.0.0', port=port, debug=False)

@@ -1,6 +1,7 @@
-transformers
-nltk
-google-generativeai
-python-dotenv
-flask
-azure-ai-textanalytics
+flask==3.0.0
+transformers==4.36.0
+nltk==3.8.1
+google-generativeai==0.3.2
+python-dotenv==1.0.0
+azure-ai-textanalytics==5.3.0
+torch==2.1.0
