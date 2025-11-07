@@ -2,7 +2,7 @@
 import os
 import sys
 import logging
-import requests
+import requests  # type: ignore[import-untyped]
 
 # Add current directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
