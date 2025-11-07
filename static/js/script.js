@@ -1,52 +1,74 @@
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM Content Loaded');
+
     const chatMessages = document.getElementById('chat-messages');
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
     const avatar = document.getElementById('avatar');
     const statusContainer = document.getElementById('status-container');
-    
+
+    // Debug: Log if elements are found
+    console.log('Elements found:', {
+        chatMessages: !!chatMessages,
+        userInput: !!userInput,
+        sendButton: !!sendButton,
+        avatar: !!avatar,
+        statusContainer: !!statusContainer
+    });
+
     // Emotion bars
     const joyBar = document.getElementById('joy-bar');
     const sadnessBar = document.getElementById('sadness-bar');
     const angerBar = document.getElementById('anger-bar');
     const fearBar = document.getElementById('fear-bar');
     const curiosityBar = document.getElementById('curiosity-bar');
-    
+
     // Check server health on load
     checkServerHealth();
-    
+
     // Start checking initialization status
     checkInitializationStatus();
-    
+
     // Auto-resize textarea as user types
-    userInput.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = (this.scrollHeight) + 'px';
-        
-        // Reset height if empty
-        if (this.value.length === 0) {
-            this.style.height = '';
-        }
-    });
-    
-    // Send message when Enter key is pressed (without Shift)
-    userInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-    
+    if (userInput) {
+        userInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+
+            // Reset height if empty
+            if (this.value.length === 0) {
+                this.style.height = '';
+            }
+        });
+
+        // Send message when Enter key is pressed (without Shift)
+        userInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                console.log('Enter key pressed, sending message');
+                sendMessage();
+            }
+        });
+    }
+
     // Add keyboard shortcut for sending messages
     document.addEventListener('keydown', function(e) {
         // Command+Enter or Ctrl+Enter to send
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
             e.preventDefault();
+            console.log('Cmd/Ctrl+Enter pressed, sending message');
             sendMessage();
         }
     });
-    
-    sendButton.addEventListener('click', sendMessage);
+
+    if (sendButton) {
+        sendButton.addEventListener('click', function() {
+            console.log('Send button clicked');
+            sendMessage();
+        });
+    } else {
+        console.error('Send button not found!');
+    }
     
     function checkServerHealth() {
         fetch('/health')
@@ -79,20 +101,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function sendMessage() {
+        console.log('sendMessage called');
+
+        if (!userInput) {
+            console.error('userInput element not found');
+            return;
+        }
+
         const message = userInput.value.trim();
-        if (message.length === 0) return;
-        
+        console.log('Message to send:', message);
+
+        if (message.length === 0) {
+            console.log('Empty message, not sending');
+            return;
+        }
+
         // Add user message to chat
         addMessage(message, 'user');
-        
+
         // Clear input
         userInput.value = '';
         userInput.style.height = '';
-        
+
         // Show typing indicator
         addTypingIndicator();
-        
+
         // Send to backend
+        console.log('Sending to backend...');
         fetch('/api/chat', {
             method: 'POST',
             headers: {
