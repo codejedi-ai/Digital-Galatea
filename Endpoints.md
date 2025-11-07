@@ -302,10 +302,60 @@ All emotions are normalized to values between 0.0 and 1.0:
 
 ---
 
+## Frontend Emotion Updates
+
+The frontend updates emotions in two ways:
+
+### 1. Immediate Update (After Chat Messages)
+When a user sends a message via `POST /api/chat`, the response includes the current emotional state:
+```json
+{
+  "response": "...",
+  "emotions": {
+    "joy": 0.3,
+    "sadness": 0.2,
+    "anger": 0.1,
+    "fear": 0.15,
+    "curiosity": 0.25
+  }
+}
+```
+The frontend immediately updates the emotion bars using `updateEmotionBars(data.emotions)`.
+
+### 2. Continuous Polling (Every 1 Second)
+The frontend polls `GET /api/avatar` every 1 second to get real-time emotion updates:
+- **Polling Interval**: 1 second
+- **Endpoint**: `GET /api/avatar`
+- **Purpose**: Updates emotions even when the user is not chatting
+- **Updates Include**:
+  - Sentiment-based emotion changes from user messages
+  - Quantum-influenced emotion changes (every 10 seconds)
+  - Natural emotion decay over time
+
+### Emotion Bar Update Function
+The frontend uses the `updateEmotionBars()` function which:
+- Takes emotion values (0.0 to 1.0 range)
+- Converts to percentages (multiplies by 100)
+- Updates the width of each emotion bar:
+  - `joy-bar`
+  - `sadness-bar`
+  - `anger-bar`
+  - `fear-bar`
+  - `curiosity-bar`
+
+### Real-Time Updates
+This dual-update mechanism ensures:
+- **Immediate feedback**: Emotions update right after each message
+- **Continuous updates**: Emotions change in real-time even without user interaction
+- **Smooth transitions**: CSS transitions (0.5s ease) provide smooth visual updates
+
+---
+
 ## Notes
 
 - All timestamps are in ISO 8601 format
 - Emotional state values are rounded to 2 decimal places in responses
 - The system requires all critical components to be ready before serving requests
 - Debug mode is enabled by default (`debug=True`)
+- Frontend polls `/api/avatar` every 1 second for real-time emotion updates
 
