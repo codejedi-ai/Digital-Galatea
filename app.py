@@ -21,11 +21,33 @@ if gemini_key:
     logging.info(f"✓ GEMINI_API_KEY found (length: {len(gemini_key)} chars)")
     logging.info(f"  First 10 chars: {gemini_key[:10]}...")
 else:
-    logging.error("✗ GEMINI_API_KEY not found in environment!")
-    logging.info("Available env vars starting with 'GEMINI': " +
+    logging.error("=" * 60)
+    logging.error("✗ FATAL ERROR: GEMINI_API_KEY not found in environment!")
+    logging.error("=" * 60)
+    logging.error("")
+    logging.error("The GEMINI_API_KEY environment variable is required to run this application.")
+    logging.error("")
+    logging.error("For Hugging Face Spaces:")
+    logging.error("  1. Go to Settings → Repository secrets")
+    logging.error("  2. Click 'New secret'")
+    logging.error("  3. Name: GEMINI_API_KEY")
+    logging.error("  4. Value: [Your Google Gemini API key]")
+    logging.error("  5. Get a key from: https://ai.google.dev/")
+    logging.error("")
+    logging.error("For local development:")
+    logging.error("  1. Copy .env.example to .env")
+    logging.error("  2. Add your API key to the .env file")
+    logging.error("")
+    logging.error("Available env vars starting with 'GEMINI': " +
                  str([k for k in os.environ.keys() if 'GEMINI' in k.upper()]))
-    logging.info("Available env vars starting with 'GOOGLE': " +
+    logging.error("Available env vars starting with 'GOOGLE': " +
                  str([k for k in os.environ.keys() if 'GOOGLE' in k.upper()]))
+    logging.error("=" * 60)
+
+    # Exit the application
+    import sys
+    sys.exit(1)
+
 logging.info("=" * 60)
 
 # Download required NLTK data on startup
