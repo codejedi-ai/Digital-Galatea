@@ -12,6 +12,22 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Load environment variables
 load_dotenv()
 
+# Debug: Log environment variable status
+logging.info("=" * 60)
+logging.info("ENVIRONMENT VARIABLES CHECK")
+logging.info("=" * 60)
+gemini_key = os.environ.get('GEMINI_API_KEY')
+if gemini_key:
+    logging.info(f"✓ GEMINI_API_KEY found (length: {len(gemini_key)} chars)")
+    logging.info(f"  First 10 chars: {gemini_key[:10]}...")
+else:
+    logging.error("✗ GEMINI_API_KEY not found in environment!")
+    logging.info("Available env vars starting with 'GEMINI': " +
+                 str([k for k in os.environ.keys() if 'GEMINI' in k.upper()]))
+    logging.info("Available env vars starting with 'GOOGLE': " +
+                 str([k for k in os.environ.keys() if 'GOOGLE' in k.upper()]))
+logging.info("=" * 60)
+
 # Download required NLTK data on startup
 def download_nltk_data():
     """Download all required NLTK data for the application"""
