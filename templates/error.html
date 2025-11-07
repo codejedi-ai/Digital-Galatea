@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galatea AI | Configuration Required</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            background-color: var(--background);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .error-card {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            max-width: 520px;
+            width: 100%;
+            padding: 40px 32px;
+        }
+
+        .error-card h1 {
+            color: var(--primary-color);
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .error-card p {
+            margin-bottom: 12px;
+            color: var(--text-color);
+        }
+
+        .steps {
+            margin-top: 24px;
+            text-align: left;
+        }
+
+        .steps h2 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .steps ol, .steps ul {
+            padding-left: 20px;
+            margin-bottom: 16px;
+        }
+
+        .steps li {
+            margin-bottom: 6px;
+        }
+
+        .back-link {
+            margin-top: 24px;
+            display: inline-block;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-card">
+        <h1>Galatea AI is Unavailable</h1>
+        {% if missing_gemini_key %}
+        <p>We couldn't find a <code>GEMINI_API_KEY</code> in the current environment.</p>
+        <p>Please add the key and reload the page to continue.</p>
+
+        <div class="steps">
+            <h2>How to fix this</h2>
+            <p><strong>Local setup:</strong></p>
+            <ol>
+                <li>Create a <code>.env</code> file if it doesn't exist.</li>
+                <li>Add <code>GEMINI_API_KEY=&lt;your_key_here&gt;</code> to the file.</li>
+                <li>Restart the Flask app.</li>
+            </ol>
+
+            <p><strong>Hugging Face Spaces:</strong></p>
+            <ol>
+                <li>Open the Space settings and go to <em>Repository secrets</em>.</li>
+                <li>Add a secret named <code>GEMINI_API_KEY</code> with your Gemini API key.</li>
+                <li>Restart or reload the Space.</li>
+            </ol>
+        </div>
+        {% else %}
+        <p>The application is temporarily unavailable. Please try again shortly.</p>
+        {% endif %}
+
+        <a class="back-link" href="/">Return to Home</a>
+    </div>
+</body>
+</html>
+

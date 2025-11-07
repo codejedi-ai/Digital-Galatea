@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, url_for
 import os
 import time
 from dotenv import load_dotenv
@@ -17,15 +17,17 @@ logging.info("=" * 60)
 logging.info("ENVIRONMENT VARIABLES CHECK")
 logging.info("=" * 60)
 gemini_key = os.environ.get('GEMINI_API_KEY')
+missing_gemini_key = False
 if gemini_key:
     logging.info(f"✓ GEMINI_API_KEY found (length: {len(gemini_key)} chars)")
     logging.info(f"  First 10 chars: {gemini_key[:10]}...")
 else:
+    missing_gemini_key = True
     logging.error("=" * 60)
-    logging.error("✗ FATAL ERROR: GEMINI_API_KEY not found in environment!")
+    logging.error("✗ GEMINI_API_KEY not found in environment!")
     logging.error("=" * 60)
     logging.error("")
-    logging.error("The GEMINI_API_KEY environment variable is required to run this application.")
+    logging.error("The GEMINI_API_KEY environment variable is required for full functionality.")
     logging.error("")
     logging.error("For Hugging Face Spaces:")
     logging.error("  1. Go to Settings → Repository secrets")
@@ -43,10 +45,6 @@ else:
     logging.error("Available env vars starting with 'GOOGLE': " +
                  str([k for k in os.environ.keys() if 'GOOGLE' in k.upper()]))
     logging.error("=" * 60)
-
-    # Exit the application
-    import sys
-    sys.exit(1)
 
 logging.info("=" * 60)
 
@@ -90,12 +88,16 @@ if missing_vars:
 
 def initialize_gemini():
     """Initialize Gemini API specifically"""
-    global galatea_ai, gemini_initialized
+    global gemini_initialized
     
     if not galatea_ai:
         logging.warning("Cannot initialize Gemini: GalateaAI instance not created yet")
         return False
         
+    if missing_gemini_key:
+        logging.error("Cannot initialize Gemini: GEMINI_API_KEY is missing")
+        return False
+
     try:
         # Check for GEMINI_API_KEY
         if not os.environ.get('GEMINI_API_KEY'):
@@ -123,6 +125,10 @@ def initialize_components():
     global current_init_retry, gemini_initialized
     
     if initializing or is_initialized:
+        return
+
+    if missing_gemini_key:
+        logging.error("Initialization aborted: GEMINI_API_KEY missing")
         return
         
     initializing = True
@@ -163,7 +169,7 @@ def home():
     # Add error handling for template rendering
     try:
         # Start initialization in background if not already started
-        if not is_initialized and not initializing:
+        if not is_initialized and not initializing and not missing_gemini_key:
             Thread(target=initialize_components).start()
             
         return render_template('index.html')
@@ -174,9 +180,15 @@ def home():
 @app.route('/api/chat', methods=['POST'])
 def chat():
     # Check if components are initialized
+    if missing_gemini_key:
+        return jsonify({
+            'error': 'GEMINI_API_KEY is missing. Chat is unavailable.',
+            'status': 'missing_gemini_key'
+        }), 503
+
     if not is_initialized:
         # Start initialization if not already started
-        if not initializing:
+        if not initializing and not missing_gemini_key:
             Thread(target=initialize_components).start()
             
         return jsonify({
@@ -390,8 +402,53 @@ def health():
     return jsonify({
         'status': 'ok',
         'gemini_available': hasattr(galatea_ai, 'gemini_available') and galatea_ai.gemini_available if galatea_ai else False,
-        'is_initialized': is_initialized
+        'is_initialized': is_initialized,
+        'missing_gemini_key': missing_gemini_key
     })
+
+@app.route('/api/availability')
+def availability():
+    """Report overall availability state to the frontend"""
+    if missing_gemini_key:
+        return jsonify({
+            'available': False,
+            'status': 'missing_gemini_key',
+            'is_initialized': False,
+            'initializing': False,
+            'missing_gemini_key': True,
+            'error_page': url_for('error_page')
+        })
+
+    if initializing or not is_initialized:
+        return jsonify({
+            'available': False,
+            'status': 'initializing',
+            'is_initialized': is_initialized,
+            'initializing': initializing,
+            'missing_gemini_key': False
+        })
+
+    return jsonify({
+        'available': True,
+        'status': 'ready',
+        'is_initialized': True,
+        'initializing': False,
+        'missing_gemini_key': False
+    })
+
+@app.route('/api/is_initialized')
+def is_initialized_endpoint():
+    """Lightweight endpoint for polling initialization progress"""
+    payload = {
+        'is_initialized': is_initialized,
+        'initializing': initializing,
+        'missing_gemini_key': missing_gemini_key
+    }
+
+    if missing_gemini_key:
+        payload['error_page'] = url_for('error_page')
+
+    return jsonify(payload)
 
 @app.route('/status')
 def status():
@@ -400,8 +457,14 @@ def status():
         'is_initialized': is_initialized,
         'initializing': initializing,
         'emotions': galatea_ai.emotional_state if galatea_ai else {'joy': 0.2, 'sadness': 0.2, 'anger': 0.2, 'fear': 0.2, 'curiosity': 0.2},
-        'avatar_shape': avatar_engine.avatar_model if avatar_engine and is_initialized else 'Circle'
+        'avatar_shape': avatar_engine.avatar_model if avatar_engine and is_initialized else 'Circle',
+        'missing_gemini_key': missing_gemini_key
     })
+
+@app.route('/error')
+def error_page():
+    """Render an informative error page when the app is unavailable"""
+    return render_template('error.html', missing_gemini_key=missing_gemini_key)
 
 if __name__ == '__main__':
     print("Starting Galatea Web Interface...")

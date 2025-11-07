@@ -7,6 +7,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const avatar = document.getElementById('avatar');
     const statusContainer = document.getElementById('status-container');
 
+    // Base API URL detection
+    const DEFAULT_API_BASE = 'http://127.0.0.1:7860';
+    const origin = window.location.origin;
+    const API_BASE_URL = origin && origin !== 'null' ? origin : DEFAULT_API_BASE;
+    const buildApiUrl = (path) => {
+        const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+        return `${API_BASE_URL}${normalizedPath}`;
+    };
+
+    let initializationComplete = false;
+    let initializationPollingActive = false;
+
     // Debug: Log if elements are found
     console.log('Elements found:', {
         chatMessages: !!chatMessages,
@@ -26,8 +38,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check server health on load
     checkServerHealth();
 
-    // Start checking initialization status
-    checkInitializationStatus();
+    // Determine availability state
+    checkAvailability();
 
     // Auto-resize textarea as user types
     if (userInput) {
@@ -71,10 +83,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function checkServerHealth() {
-        fetch('/health')
+        fetch(buildApiUrl('/health'))
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'ok') {
+                    if (data.missing_gemini_key) {
+                        showStatusMessage('GEMINI_API_KEY missing. Chat will remain unavailable until it is configured.', true);
+                        return;
+                    }
                     if (data.gemini_available) {
                         showStatusMessage('Connected to Gemini API', false);
                     } else {
@@ -100,6 +116,82 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     
+    function ensureLoadingScreenVisible() {
+        const loadingScreen = document.getElementById('loading-screen');
+        const chatContainer = document.getElementById('chat-container');
+        if (loadingScreen) {
+            loadingScreen.style.display = 'flex';
+            loadingScreen.classList.remove('fade-out');
+        }
+        if (chatContainer) {
+            chatContainer.style.display = 'none';
+        }
+    }
+
+    function onAppReady() {
+        if (initializationComplete) {
+            return;
+        }
+
+        initializationComplete = true;
+        initializationPollingActive = false;
+
+        const loadingScreen = document.getElementById('loading-screen');
+        const chatContainer = document.getElementById('chat-container');
+        const loadingStatus = document.getElementById('loading-status');
+        const loadingProgress = document.getElementById('loading-progress');
+
+        if (loadingProgress) {
+            loadingProgress.style.width = '100%';
+        }
+        if (loadingStatus) {
+            loadingStatus.textContent = 'Ready! Welcome to Galatea AI';
+        }
+
+        if (loadingScreen) {
+            loadingScreen.classList.add('fade-out');
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+                if (chatContainer) {
+                    chatContainer.style.display = 'flex';
+                }
+            }, 500);
+        } else if (chatContainer) {
+            chatContainer.style.display = 'flex';
+        }
+
+        startAvatarPolling();
+    }
+
+    function checkAvailability() {
+        fetch(buildApiUrl('/api/availability'))
+            .then(response => response.json())
+            .then(data => {
+                if (!data.available) {
+                    if (data.status === 'missing_gemini_key') {
+                        const errorPath = data.error_page || '/error';
+                        window.location.href = `${API_BASE_URL}${errorPath}`;
+                        return;
+                    }
+
+                    if (data.status === 'initializing') {
+                        ensureLoadingScreenVisible();
+                        if (!initializationPollingActive) {
+                            initializationPollingActive = true;
+                            checkInitializationStatus();
+                        }
+                        return;
+                    }
+                }
+
+                onAppReady();
+            })
+            .catch(error => {
+                console.error('Error checking availability:', error);
+                setTimeout(checkAvailability, 3000);
+            });
+    }
+
     function sendMessage() {
         console.log('sendMessage called');
 
@@ -128,7 +220,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Send to backend
         console.log('Sending to backend...');
-        fetch('/api/chat', {
+        fetch(buildApiUrl('/api/chat'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -217,6 +309,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add initialization status check with loading screen
     let initCheckCount = 0;
     function checkInitializationStatus() {
+        if (initializationComplete) {
+            return;
+        }
+
         const loadingScreen = document.getElementById('loading-screen');
         const chatContainer = document.getElementById('chat-container');
         const loadingStatus = document.getElementById('loading-status');
@@ -228,46 +324,32 @@ document.addEventListener('DOMContentLoaded', function() {
             loadingProgress.style.width = `${progress}%`;
         }
 
-        fetch('/status')
+        fetch(buildApiUrl('/api/is_initialized'))
             .then(response => response.json())
             .then(data => {
+                if (data.missing_gemini_key) {
+                    const errorPath = data.error_page || '/error';
+                    window.location.href = `${API_BASE_URL}${errorPath}`;
+                    return;
+                }
+
+                if (data.is_initialized) {
+                    onAppReady();
+                    return;
+                }
+
                 if (data.initializing) {
-                    // Still initializing
                     if (loadingStatus) {
                         loadingStatus.textContent = 'Initializing AI components...';
                     }
                     setTimeout(checkInitializationStatus, 2000); // Check again in 2 seconds
-                } else if (data.is_initialized) {
-                    // Initialization complete!
-                    if (loadingProgress) {
-                        loadingProgress.style.width = '100%';
-                    }
-                    if (loadingStatus) {
-                        loadingStatus.textContent = 'Ready! Welcome to Galatea AI';
-                    }
-
-                    // Hide loading screen and show chat after a brief delay
-                    setTimeout(() => {
-                        if (loadingScreen) {
-                            loadingScreen.classList.add('fade-out');
-                            setTimeout(() => {
-                                loadingScreen.style.display = 'none';
-                                if (chatContainer) {
-                                    chatContainer.style.display = 'flex';
-                                }
-                            }, 500);
-                        }
-
-                        // Start polling for avatar updates when initialized
-                        startAvatarPolling();
-                    }, 1000);
-                } else {
-                    // Something wrong with initialization
-                    if (loadingStatus) {
-                        loadingStatus.textContent = 'Initialization taking longer than expected...';
-                    }
-                    setTimeout(checkInitializationStatus, 3000);
+                    return;
                 }
+
+                if (loadingStatus) {
+                    loadingStatus.textContent = 'Initialization taking longer than expected...';
+                }
+                setTimeout(checkInitializationStatus, 3000);
             })
             .catch(error => {
                 console.error('Error checking status:', error);
@@ -294,7 +376,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function pollAvatarState() {
-        fetch('/api/avatar')
+        fetch(buildApiUrl('/api/avatar'))
             .then(response => response.json())
             .then(data => {
                 if (data.avatar_shape && data.is_initialized) {
