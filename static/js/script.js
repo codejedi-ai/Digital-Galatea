@@ -179,33 +179,67 @@ document.addEventListener('DOMContentLoaded', function() {
         curiosityBar.style.width = `${emotions.curiosity * 100}%`;
     }
     
-    // Add initialization status check
+    // Add initialization status check with loading screen
+    let initCheckCount = 0;
     function checkInitializationStatus() {
-        const statusContainer = document.getElementById('status-container');
-        
+        const loadingScreen = document.getElementById('loading-screen');
+        const chatContainer = document.getElementById('chat-container');
+        const loadingStatus = document.getElementById('loading-status');
+        const loadingProgress = document.getElementById('loading-progress');
+
+        initCheckCount++;
+        const progress = Math.min(initCheckCount * 10, 90); // Cap at 90% until actually ready
+        if (loadingProgress) {
+            loadingProgress.style.width = `${progress}%`;
+        }
+
         fetch('/status')
             .then(response => response.json())
             .then(data => {
                 if (data.initializing) {
                     // Still initializing
-                    showStatusMessage('Galatea AI is still initializing. You can start chatting, but responses may be delayed.', false);
-                    setTimeout(checkInitializationStatus, 3000); // Check again in 3 seconds
+                    if (loadingStatus) {
+                        loadingStatus.textContent = 'Initializing AI components...';
+                    }
+                    setTimeout(checkInitializationStatus, 2000); // Check again in 2 seconds
                 } else if (data.is_initialized) {
-                    // Initialization complete
-                    showStatusMessage('Galatea AI is ready!', false);
-                    // Start polling for avatar updates when initialized
-                    startAvatarPolling();
+                    // Initialization complete!
+                    if (loadingProgress) {
+                        loadingProgress.style.width = '100%';
+                    }
+                    if (loadingStatus) {
+                        loadingStatus.textContent = 'Ready! Welcome to Galatea AI';
+                    }
+
+                    // Hide loading screen and show chat after a brief delay
                     setTimeout(() => {
-                        statusContainer.style.display = 'none';
-                    }, 3000);
+                        if (loadingScreen) {
+                            loadingScreen.classList.add('fade-out');
+                            setTimeout(() => {
+                                loadingScreen.style.display = 'none';
+                                if (chatContainer) {
+                                    chatContainer.style.display = 'flex';
+                                }
+                            }, 500);
+                        }
+
+                        // Start polling for avatar updates when initialized
+                        startAvatarPolling();
+                    }, 1000);
                 } else {
                     // Something wrong with initialization
-                    showStatusMessage('Galatea initialization is taking longer than expected. You can still chat, but with limited functionality.', true);
+                    if (loadingStatus) {
+                        loadingStatus.textContent = 'Initialization taking longer than expected...';
+                    }
+                    setTimeout(checkInitializationStatus, 3000);
                 }
             })
             .catch(error => {
                 console.error('Error checking status:', error);
-                showStatusMessage('Error checking Galatea status', true);
+                if (loadingStatus) {
+                    loadingStatus.textContent = 'Error connecting to server. Retrying...';
+                }
+                setTimeout(checkInitializationStatus, 3000);
             });
     }
 

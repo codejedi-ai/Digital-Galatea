@@ -8,7 +8,27 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="chat-container">
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-avatar">
+                <div class="avatar circle">
+                    <div class="face">
+                        <div class="eyes"></div>
+                        <div class="mouth"></div>
+                    </div>
+                </div>
+            </div>
+            <h2>Initializing Galatea AI</h2>
+            <div class="loading-spinner"></div>
+            <p id="loading-status">Waking up and connecting to Gemini...</p>
+            <div class="loading-bar">
+                <div class="loading-progress" id="loading-progress"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-container" id="chat-container" style="display: none;">
         <div class="header">
             <h1>Galatea AI</h1>
             <div class="avatar-container">
