@@ -1,6 +1,6 @@
 # Environment variables
 .env
-
+.DS_Store
 # Python cache files
 __pycache__/
 *.py[cod]
