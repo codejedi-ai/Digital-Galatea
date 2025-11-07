@@ -1,0 +1,65 @@
+# Galatea AI Model Configuration
+# This file contains all model settings and hyperparameters
+
+# Gemini Agent Configuration (Thinking/Analysis)
+gemini:
+  # Single model to use for thinking/analysis
+  model: "gemini-2.0-flash-exp"
+  
+  # Hyperparameters
+  temperature: 0.5  # Lower temperature for more focused thinking
+  max_tokens: 200
+  
+  # API endpoint (automatically constructed)
+  api_endpoint: "https://generativelanguage.googleapis.com/v1beta/models"
+
+# Pi/Phi Agent Configuration (Response Generation)
+inflection_ai:
+  # Single model to use for response generation
+  model: "Pi-3.1"
+  
+  # API endpoint
+  api_endpoint: "https://api.inflection.ai/external/api/inference"
+  
+  # Hyperparameters (if supported by API)
+  # Note: Inflection AI may not support all these parameters
+  temperature: 0.8
+  max_tokens: 300
+
+# Sentiment Analysis Configuration
+sentiment:
+  # Primary model (Hugging Face)
+  primary_model: "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
+  # Fallback: NLTK VADER (automatic if primary fails)
+
+# Memory System Configuration (JSON only)
+memory:
+  # JSON memory settings
+  json_path: "./memory.json"
+  
+  # Memory retrieval settings
+  retrieval:
+    max_retrieved_memories: 5
+
+# Conversation Configuration
+conversation:
+  max_history_length: 20  # Number of messages to keep (user + assistant pairs)
+  max_response_length: 50  # Target response length in words
+
+# System Prompt Configuration
+system_prompts:
+  galatea_identity: "You are Galatea, an AI assistant with emotional awareness and memory."
+  response_style: "Respond in character, keeping responses concise (under 50 words)."
+  
+# Quantum Randomness Configuration
+quantum:
+  api_endpoint: "https://api.quantumnumbers.anu.edu.au"
+  default_length: 128
+  default_type: "uint8"
+  
+  # Usage settings
+  use_for_temperature: true
+  use_for_emotion_decay: true
+  use_for_learning_rate: true
+  use_for_curiosity: true
+

@@ -76,6 +76,8 @@ initializing = False
 gemini_initialized = False
 max_init_retries = 3
 current_init_retry = 0
+init_script_running = False
+init_script_complete = False
 
 # Check for required environment variables
 required_env_vars = ['GEMINI_API_KEY']
@@ -119,13 +121,70 @@ def initialize_gemini():
         logging.error(f"Error initializing Gemini API: {e}")
         return False
 
+def run_init_script():
+    """Run the initialization script in parallel"""
+    global init_script_running, init_script_complete
+    
+    if init_script_running or init_script_complete:
+        return
+    
+    init_script_running = True
+    logging.info("=" * 70)
+    logging.info("RUNNING PARALLEL INITIALIZATION SCRIPT")
+    logging.info("=" * 70)
+    
+    try:
+        import subprocess
+        import sys
+        
+        # Run the initialization script
+        script_path = os.path.join(os.path.dirname(__file__), 'initialize_galatea.py')
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        if result.returncode == 0:
+            logging.info("✓ Initialization script completed successfully")
+            init_script_complete = True
+        else:
+            logging.error(f"✗ Initialization script failed with code {result.returncode}")
+            logging.error(f"Error output: {result.stderr}")
+            # Still mark as complete to allow app to continue
+            init_script_complete = True
+    except subprocess.TimeoutExpired:
+        logging.error("✗ Initialization script timed out")
+        init_script_complete = True
+    except Exception as e:
+        logging.error(f"✗ Error running initialization script: {e}")
+        init_script_complete = True
+    finally:
+        init_script_running = False
+        logging.info("=" * 70)
+
 def initialize_components():
-    """Initialize Galatea components"""
+    """Initialize Galatea components (runs after init script completes)"""
     global galatea_ai, dialogue_engine, avatar_engine, is_initialized, initializing
-    global current_init_retry, gemini_initialized
+    global current_init_retry, gemini_initialized, init_script_complete
     
     if initializing or is_initialized:
         return
+    
+    # Wait for initialization script to complete (poll every 2 seconds)
+    max_wait_time = 300  # 5 minutes
+    wait_start = time.time()
+    while not init_script_complete:
+        elapsed = time.time() - wait_start
+        if elapsed > max_wait_time:
+            logging.warning("Initialization script timeout - proceeding anyway")
+            break
+        logging.info(f"Waiting for initialization script to complete... ({elapsed:.0f}s)")
+        time.sleep(2)
+    
+    if not init_script_complete:
+        logging.warning("Proceeding with component initialization despite init script not completing")
 
     if missing_gemini_key:
         logging.error("Initialization aborted: GEMINI_API_KEY missing")
@@ -136,31 +195,69 @@ def initialize_components():
     
     try:
         # Import here to avoid circular imports and ensure errors are caught
-        from import_random import GalateaAI, DialogueEngine, AvatarEngine
+        from galatea_ai import GalateaAI
+        from dialogue import DialogueEngine
+        from avatar import AvatarEngine
         
         # Initialize components
+        logging.info("=" * 60)
+        logging.info("INITIALIZING GALATEA AI SYSTEM")
+        logging.info("=" * 60)
+        
         galatea_ai = GalateaAI()
         dialogue_engine = DialogueEngine(galatea_ai)
         avatar_engine = AvatarEngine()
         avatar_engine.update_avatar(galatea_ai.emotional_state)
         
-        # Try to initialize Gemini specifically
-        gemini_initialized = initialize_gemini()
+        # Check if all components are fully initialized
+        init_status = galatea_ai.get_initialization_status()
         
-        is_initialized = True
-        logging.info(f"Galatea components initialized successfully. Gemini status: {gemini_initialized}")
-        logging.info(f"Emotions initialized: {galatea_ai.emotional_state}")
+        logging.info("=" * 60)
+        logging.info("INITIALIZATION STATUS")
+        logging.info("=" * 60)
+        logging.info(f"Memory System (JSON): {init_status['memory_system']}")
+        logging.info(f"Sentiment Analyzer: {init_status['sentiment_analyzer']}")
+        logging.info(f"Models Ready: {init_status['models']}")
+        logging.info(f"  - Gemini available: {init_status['gemini_available']}")
+        logging.info(f"  - Inflection AI available: {init_status['inflection_ai_available']}")
+        logging.info(f"API Keys Valid: {init_status['api_keys']}")
+        logging.info(f"Fully Initialized: {init_status['fully_initialized']}")
+        logging.info("=" * 60)
+        
+        # CRITICAL: Only mark as initialized if ALL components are ready
+        # If any component fails, EXIT the application immediately
+        if init_status['fully_initialized']:
+            is_initialized = True
+            logging.info("✓ Galatea AI system fully initialized and ready")
+            logging.info(f"Emotions initialized: {galatea_ai.emotional_state}")
+        else:
+            logging.error("=" * 60)
+            logging.error("❌ INITIALIZATION FAILED - EXITING APPLICATION")
+            logging.error("=" * 60)
+            logging.error("One or more critical components failed to initialize:")
+            if not init_status['memory_system']:
+                logging.error("  ✗ Memory System (JSON) - FAILED")
+            if not init_status['sentiment_analyzer']:
+                logging.error("  ✗ Sentiment Analyzer - FAILED")
+            if not init_status['models']:
+                logging.error("  ✗ Models - FAILED")
+            if not init_status['api_keys']:
+                logging.error("  ✗ API Keys - FAILED")
+            logging.error("=" * 60)
+            logging.error("EXITING APPLICATION - All systems must be operational")
+            logging.error("=" * 60)
+            import sys
+            sys.exit(1)  # Exit immediately - no retries, no partial functionality
     except Exception as e:
-        logging.error(f"Error initializing Galatea: {e}")
-        print(f"Error initializing Galatea: {e}")
-        
-        # Retry logic for initialization failures
-        current_init_retry += 1
-        if current_init_retry < max_init_retries:
-            logging.info(f"Retrying initialization (attempt {current_init_retry}/{max_init_retries})...")
-            time.sleep(2)  # Wait before retrying
-            initializing = False
-            Thread(target=initialize_components).start()
+        logging.error("=" * 60)
+        logging.error(f"❌ CRITICAL ERROR INITIALIZING GALATEA: {e}")
+        logging.error("=" * 60)
+        logging.error("EXITING APPLICATION - Cannot continue with initialization failure")
+        logging.error("=" * 60)
+        print(f"CRITICAL ERROR: {e}")
+        print("Application exiting due to initialization failure")
+        import sys
+        sys.exit(1)  # Exit immediately - no retries
     finally:
         initializing = False
 
@@ -168,9 +265,13 @@ def initialize_components():
 def home():
     # Add error handling for template rendering
     try:
-        # Start initialization in background if not already started
+        # Start initialization script in background if not already started
+        if not init_script_complete and not init_script_running:
+            Thread(target=run_init_script, daemon=True).start()
+        
+        # Start component initialization after init script (will wait if script not done)
         if not is_initialized and not initializing and not missing_gemini_key:
-            Thread(target=initialize_components).start()
+            Thread(target=initialize_components, daemon=True).start()
             
         return render_template('index.html')
     except Exception as e:
@@ -179,24 +280,21 @@ def home():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    # Check if components are initialized
+    # CRITICAL: Do not allow chat if system is not fully initialized
+    if not is_initialized:
+        return jsonify({
+            'error': 'System is not initialized yet. Please wait for initialization to complete.',
+            'is_initialized': False,
+            'status': 'initializing'
+        }), 503  # Service Unavailable
+    
+    # Check if API key is missing
     if missing_gemini_key:
         return jsonify({
             'error': 'GEMINI_API_KEY is missing. Chat is unavailable.',
-            'status': 'missing_gemini_key'
-        }), 503
-
-    if not is_initialized:
-        # Start initialization if not already started
-        if not initializing and not missing_gemini_key:
-            Thread(target=initialize_components).start()
-            
-        return jsonify({
-            'response': 'I am still initializing. Please try again in a moment.',
-            'avatar_shape': 'Circle',
-            'emotions': {'joy': 0.2, 'sadness': 0.2, 'anger': 0.2, 'fear': 0.2, 'curiosity': 0.2},
+            'status': 'missing_gemini_key',
             'is_initialized': False
-        })
+        }), 503
     
     data = request.json
     user_input = data.get('message', '')
@@ -207,6 +305,15 @@ def chat():
     try:
         # Process the message through Galatea
         response = dialogue_engine.get_response(user_input)
+        
+        # CRITICAL: If response is None, Pi-3.1 failed - exit application
+        if response is None:
+            error_msg = "CRITICAL: Pi-3.1 (PHI) model failed to generate response. Application cannot continue."
+            logging.error("=" * 60)
+            logging.error(error_msg)
+            logging.error("=" * 60)
+            import sys
+            sys.exit(1)  # Exit immediately
         
         # Update avatar
         avatar_engine.update_avatar(galatea_ai.emotional_state)
@@ -223,12 +330,24 @@ def chat():
             'emotions': emotions,
             'is_initialized': True
         })
+    except RuntimeError as e:
+        # CRITICAL: RuntimeError means a system failure - exit application
+        error_msg = f"CRITICAL SYSTEM FAILURE: {e}"
+        logging.error("=" * 60)
+        logging.error(error_msg)
+        logging.error("EXITING APPLICATION")
+        logging.error("=" * 60)
+        import sys
+        sys.exit(1)  # Exit immediately
     except Exception as e:
-        logging.error(f"Error processing chat: {e}")
-        return jsonify({
-            'error': 'Failed to process your message',
-            'details': str(e)
-        }), 500
+        # Any other exception is also critical - exit application
+        error_msg = f"CRITICAL ERROR processing chat: {e}"
+        logging.error("=" * 60)
+        logging.error(error_msg)
+        logging.error("EXITING APPLICATION")
+        logging.error("=" * 60)
+        import sys
+        sys.exit(1)  # Exit immediately
 
 # Import Azure Text Analytics with fallback to NLTK VADER
 try:
@@ -439,16 +558,56 @@ def availability():
 @app.route('/api/is_initialized')
 def is_initialized_endpoint():
     """Lightweight endpoint for polling initialization progress"""
-    payload = {
-        'is_initialized': is_initialized,
-        'initializing': initializing,
-        'missing_gemini_key': missing_gemini_key
-    }
-
+    global init_script_running, init_script_complete
+    
+    # Determine current initialization state
     if missing_gemini_key:
-        payload['error_page'] = url_for('error_page')
-
-    return jsonify(payload)
+        return jsonify({
+            'is_initialized': False,
+            'initializing': False,
+            'missing_gemini_key': True,
+            'error_page': url_for('error_page'),
+            'status': 'missing_api_key'
+        })
+    
+    # Check if init script is still running
+    if init_script_running:
+        return jsonify({
+            'is_initialized': False,
+            'initializing': True,
+            'missing_gemini_key': False,
+            'status': 'running_init_script',
+            'message': 'Running parallel initialization...'
+        })
+    
+    # Check if components are initializing
+    if initializing:
+        return jsonify({
+            'is_initialized': False,
+            'initializing': True,
+            'missing_gemini_key': False,
+            'status': 'initializing_components',
+            'message': 'Initializing AI components...'
+        })
+    
+    # Check if fully initialized
+    if is_initialized:
+        return jsonify({
+            'is_initialized': True,
+            'initializing': False,
+            'missing_gemini_key': False,
+            'status': 'ready',
+            'message': 'System ready'
+        })
+    
+    # Still waiting
+    return jsonify({
+        'is_initialized': False,
+        'initializing': True,
+        'missing_gemini_key': False,
+        'status': 'waiting',
+        'message': 'Waiting for initialization...'
+    })
 
 @app.route('/status')
 def status():
@@ -468,7 +627,19 @@ def error_page():
 
 if __name__ == '__main__':
     print("Starting Galatea Web Interface...")
-    print("The chatbot will initialize in the background when first accessed.")
+    print("Initialization will begin automatically when the app starts.")
+    
+    # Start initialization script immediately when app starts
+    logging.info("=" * 70)
+    logging.info("STARTING GALATEA AI APPLICATION")
+    logging.info("=" * 70)
+    logging.info("Launching parallel initialization script...")
+    
+    # Start initialization script in background thread
+    Thread(target=run_init_script, daemon=True).start()
+    
+    # Start component initialization (will wait for init script)
+    Thread(target=initialize_components, daemon=True).start()
 
     # Add debug logs for avatar shape changes
     logging.info("Avatar system initialized with default shape.")
@@ -476,5 +647,8 @@ if __name__ == '__main__':
     # Get port from environment variable (for Hugging Face Spaces compatibility)
     port = int(os.environ.get('PORT', 7860))
 
+    logging.info(f"Flask server starting on port {port}...")
+    logging.info("Frontend will poll /api/is_initialized for status")
+    
     # Bind to 0.0.0.0 for external access (required for Hugging Face Spaces)
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=True)
