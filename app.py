@@ -106,9 +106,8 @@ def initialize_gemini():
             logging.error("GEMINI_API_KEY not found in environment variables")
             return False
             
-        # Try to initialize Gemini specifically
-        galatea_ai.initialize_gemini()
-        gemini_success = hasattr(galatea_ai, 'gemini_available') and galatea_ai.gemini_available
+        # Check if Gemini agent is ready (initialization happens automatically in GalateaAI.__init__)
+        gemini_success = hasattr(galatea_ai, 'gemini_agent') and galatea_ai.gemini_agent.is_ready()
         
         if gemini_success:
             gemini_initialized = True

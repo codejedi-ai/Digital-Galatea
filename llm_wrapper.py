@@ -166,7 +166,8 @@ class LLMWrapper:
         
         try:
             logging.info(f"[LLMWrapper] Calling Inflection AI API: {model_config}")
-            logging.debug(f"[LLMWrapper] Request URL: {url}")
+            logging.info(f"[LLMWrapper] Request URL: {url}")
+            logging.info(f"[LLMWrapper] Request context parts count: {len(context_parts)}")
             logging.debug(f"[LLMWrapper] Request data: {data}")
             response = requests.post(url, headers=headers, json=data, timeout=30)
             
@@ -180,8 +181,9 @@ class LLMWrapper:
                     logging.error(f"[LLMWrapper] Raw response text: {response.text[:500]}")
                     return None
                 
-                logging.debug(f"[LLMWrapper] Response JSON: {result}")
+                logging.info(f"[LLMWrapper] Response JSON: {result}")
                 logging.info(f"[LLMWrapper] Response type: {type(result)}")
+                logging.info(f"[LLMWrapper] Response keys: {list(result.keys()) if isinstance(result, dict) else 'N/A'}")
                 
                 # Extract response text - Inflection AI returns text in 'text' field
                 # Based on actual API response: {"created": ..., "text": "...", "tool_calls": [], "reasoning_content": null}

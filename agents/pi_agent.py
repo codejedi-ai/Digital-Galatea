@@ -42,39 +42,49 @@ class PiResponseAgent:
             # Create context with emotional state
             emotions_text = ", ".join([f"{emotion}: {value:.2f}" for emotion, value in emotional_state.items()])
             
-            # Build comprehensive context - Inflection AI API only accepts "Human" and "Assistant" types
-            # We'll incorporate system instructions into the first Human message
+            # Build comprehensive context with thinking insights, conversation history, and retrieved memories
             context_parts = []
             
-            # Build system instructions as part of the user input context
-            system_instructions = f"[Context: You are Galatea, an AI assistant. Emotional state: {emotions_text}. "
+            # Base system context - Inflection AI uses lowercase "system" type
+            base_context = f"You are Galatea, an AI assistant with the following emotional state: {emotions_text}. Respond in character as Galatea. Keep your response concise (under 50 words) and reflect your emotional state in your tone."
             
             # Add thinking context from Gemini if available
             if thinking_context:
-                system_instructions += f"Internal analysis: {thinking_context}. "
+                base_context += f"\n\nInternal analysis: {thinking_context}"
             
             # Add retrieved memories if available
             if retrieved_memories and len(retrieved_memories) > 0:
-                memory_text = "Relevant memories: "
+                memory_text = "\n\nRelevant context from past conversations:\n"
                 for i, memory in enumerate(retrieved_memories[:3], 1):  # Top 3 most relevant
-                    memory_text += f"{i}. {memory['text'][:100]}; "
-                system_instructions += memory_text
+                    memory_text += f"{i}. {memory['text'][:150]}...\n"
+                base_context += memory_text
             
-            system_instructions += "Keep response concise (under 50 words) and reflect emotional state.]"
-            
-            # Add conversation history as context messages (Human/Assistant only)
+            # Add conversation history context
             if conversation_history and len(conversation_history) > 0:
-                # Include recent conversation history
-                for msg in conversation_history[-6:]:  # Last 3 exchanges (6 messages)
+                recent_history = conversation_history[-4:]  # Last 2 exchanges
+                history_text = "\n\nRecent conversation context:\n"
+                for msg in recent_history:
+                    role = "User" if msg["role"] == "user" else "You (Galatea)"
+                    history_text += f"{role}: {msg['content']}\n"
+                base_context += history_text
+            
+            context_parts.append({
+                "text": base_context,
+                "type": "Instruction"  # Use "Instruction" type for system instructions (System requires event_type)
+            })
+            
+            # Add conversation history as context messages
+            if conversation_history and len(conversation_history) > 4:
+                # Add older messages as context (but not the most recent ones we already included)
+                for msg in conversation_history[-8:-4]:
                     context_parts.append({
                         "text": msg["content"],
                         "type": "Human" if msg["role"] == "user" else "Assistant"
                     })
             
-            # Add current user input with system context prepended
-            enhanced_user_input = f"{system_instructions}\n\n{user_input}"
+            # Add current user input
             context_parts.append({
-                "text": enhanced_user_input,
+                "text": user_input,
                 "type": "Human"
             })
 
