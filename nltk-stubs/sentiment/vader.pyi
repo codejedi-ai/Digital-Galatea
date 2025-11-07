@@ -1,0 +1,6 @@
+"""Type stubs for nltk.sentiment.vader"""
+
+class SentimentIntensityAnalyzer:
+    def __init__(self, lexicon_file: str = ..., emoji_lexicon: str = ...) -> None: ...
+    def polarity_scores(self, text: str) -> dict[str, float]: ...
+

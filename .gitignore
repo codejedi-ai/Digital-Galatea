@@ -16,4 +16,5 @@ ENV/
 *.log
 chroma_db/
 memory.json
+emotions.json
 "import random.md"

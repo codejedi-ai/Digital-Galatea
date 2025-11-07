@@ -126,10 +126,24 @@ class LLMWrapper:
                 logging.error(f"[LLMWrapper] Unexpected Gemini response format: {result}")
                 return None
             else:
-                logging.error(f"[LLMWrapper] Gemini API returned status {response.status_code}: {response.text}")
-                return None
+                # Raise exception with status code and response text so validation can catch it
+                error_text = response.text
+                logging.error(f"[LLMWrapper] Gemini API returned status {response.status_code}: {error_text}")
+                # Create exception with status code info for validation to catch
+                api_error = Exception(f"Gemini API status {response.status_code}: {error_text}")
+                api_error.status_code = response.status_code
+                api_error.response_text = error_text
+                raise api_error
                 
+        except requests.RequestException as e:
+            # Network/request errors - log and return None
+            logging.error(f"[LLMWrapper] Network error calling Gemini API: {e}")
+            return None
         except Exception as e:
+            # Re-raise status code errors so validation can catch them
+            if hasattr(e, 'status_code'):
+                raise
+            # Other errors - log and return None
             logging.error(f"[LLMWrapper] Error calling Gemini API: {e}")
             return None
     

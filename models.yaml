@@ -41,6 +41,11 @@ memory:
   retrieval:
     max_retrieved_memories: 5
 
+# Emotional State Configuration
+emotions:
+  # JSON file path for emotional state persistence
+  json_path: "./emotions.json"
+
 # Conversation Configuration
 conversation:
   max_history_length: 20  # Number of messages to keep (user + assistant pairs)

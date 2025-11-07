@@ -1,10 +1,14 @@
 from flask import Flask, render_template, request, jsonify, url_for
 import os
+import sys
 import time
+import json
 from dotenv import load_dotenv
 import logging
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import nltk
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -71,13 +75,12 @@ app = Flask(__name__, static_folder='static', template_folder='templates')
 galatea_ai = None
 dialogue_engine = None
 avatar_engine = None
+quantum_emotion_service = None
 is_initialized = False
 initializing = False
 gemini_initialized = False
 max_init_retries = 3
 current_init_retry = 0
-init_script_running = False
-init_script_complete = False
 
 # Check for required environment variables
 required_env_vars = ['GEMINI_API_KEY']
@@ -120,70 +123,324 @@ def initialize_gemini():
         logging.error(f"Error initializing Gemini API: {e}")
         return False
 
-def run_init_script():
-    """Run the initialization script in parallel"""
-    global init_script_running, init_script_complete
-    
-    if init_script_running or init_script_complete:
-        return
-    
-    init_script_running = True
-    logging.info("=" * 70)
-    logging.info("RUNNING PARALLEL INITIALIZATION SCRIPT")
-    logging.info("=" * 70)
-    
+# Global status tracking for parallel initialization
+init_status = {
+    'json_memory': {'ready': False, 'error': None},
+    'sentiment_analyzer': {'ready': False, 'error': None},
+    'gemini_api': {'ready': False, 'error': None},
+    'inflection_api': {'ready': False, 'error': None},
+    'quantum_api': {'ready': False, 'error': None},
+}
+
+def initialize_json_memory():
+    """Initialize JSON memory database"""
     try:
-        import subprocess
-        import sys
-        
-        # Run the initialization script
-        script_path = os.path.join(os.path.dirname(__file__), 'initialize_galatea.py')
-        result = subprocess.run(
-            [sys.executable, script_path],
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minute timeout
-        )
-        
-        if result.returncode == 0:
-            logging.info("✓ Initialization script completed successfully")
-            init_script_complete = True
+        logging.info("🔄 [JSON Memory] Initializing...")
+        print("🔄 [JSON Memory] Initializing...")
+        json_path = "./memory.json"
+        if os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                memory = json.load(f)
+            logging.info(f"✓ [JSON Memory] Loaded {len(memory)} entries")
+            print(f"✓ [JSON Memory] Loaded {len(memory)} entries")
         else:
-            logging.error(f"✗ Initialization script failed with code {result.returncode}")
-            logging.error(f"Error output: {result.stderr}")
-            # Still mark as complete to allow app to continue
-            init_script_complete = True
-    except subprocess.TimeoutExpired:
-        logging.error("✗ Initialization script timed out")
-        init_script_complete = True
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump({}, f)
+            logging.info("✓ [JSON Memory] Created new database")
+            print("✓ [JSON Memory] Created new database")
+        init_status['json_memory']['ready'] = True
+        return True
     except Exception as e:
-        logging.error(f"✗ Error running initialization script: {e}")
-        init_script_complete = True
-    finally:
-        init_script_running = False
-        logging.info("=" * 70)
+        error_msg = f"JSON memory initialization failed: {e}"
+        logging.error(f"✗ [JSON Memory] {error_msg}")
+        print(f"✗ [JSON Memory] {error_msg}")
+        init_status['json_memory']['error'] = str(e)
+        return False
+
+def initialize_sentiment_analyzer():
+    """Initialize sentiment analyzer"""
+    try:
+        logging.info("🔄 [Sentiment Analyzer] Starting initialization...")
+        print("🔄 [Sentiment Analyzer] Starting initialization...")
+        try:
+            from transformers import pipeline
+            analyzer = pipeline(
+                "sentiment-analysis",
+                model="distilbert/distilbert-base-uncased-finetuned-sst-2-english"
+            )
+            result = analyzer("test")
+            logging.info("✓ [Sentiment Analyzer] Hugging Face model loaded")
+            print("✓ [Sentiment Analyzer] Hugging Face model loaded")
+            init_status['sentiment_analyzer']['ready'] = True
+            return True
+        except ImportError:
+            logging.info("✓ [Sentiment Analyzer] Using fallback (NLTK VADER)")
+            print("✓ [Sentiment Analyzer] Using fallback (NLTK VADER)")
+            init_status['sentiment_analyzer']['ready'] = True
+            return True
+        except Exception as e:
+            error_msg = str(e)
+            if 'np.float_' in error_msg or 'NumPy 2' in error_msg or '_ARRAY_API' in error_msg:
+                logging.warning(f"⚠ [Sentiment Analyzer] NumPy compatibility issue - using fallback")
+                print("⚠ [Sentiment Analyzer] NumPy compatibility issue - using fallback")
+                init_status['sentiment_analyzer']['ready'] = True
+                return True
+            else:
+                raise
+    except Exception as e:
+        error_msg = f"Sentiment analyzer initialization failed: {e}"
+        logging.warning(f"⚠ [Sentiment Analyzer] {error_msg} - using fallback")
+        print(f"⚠ [Sentiment Analyzer] Using fallback")
+        init_status['sentiment_analyzer']['error'] = str(e)
+        init_status['sentiment_analyzer']['ready'] = True
+        return True
+
+def validate_gemini_api():
+    """Validate Gemini API key"""
+    try:
+        logging.info("🔄 [Gemini API] Validating API key...")
+        print("🔄 [Gemini API] Validating API key...")
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            logging.warning("⚠ [Gemini API] API key not found")
+            print("⚠ [Gemini API] API key not found")
+            init_status['gemini_api']['ready'] = False
+            return False
+        try:
+            from llm_wrapper import LLMWrapper
+            from config import MODEL_CONFIG
+            
+            # Get model from config
+            gemini_config = MODEL_CONFIG.get('gemini', {}) if MODEL_CONFIG else {}
+            gemini_model = gemini_config.get('model', 'gemini-2.0-flash-exp')
+            
+            wrapper = LLMWrapper(gemini_model=gemini_model)
+            response = wrapper.call_gemini(
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=5
+            )
+            if response:
+                logging.info("✓ [Gemini API] API key validated")
+                print("✓ [Gemini API] API key validated")
+                init_status['gemini_api']['ready'] = True
+                return True
+            else:
+                logging.warning("⚠ [Gemini API] Validation failed - no response")
+                print("⚠ [Gemini API] Validation failed - key exists, may be network issue")
+                return False
+        except Exception as e:
+            error_msg = str(e)
+            # Check status code from exception if available
+            status_code = getattr(e, 'status_code', None)
+            response_text = getattr(e, 'response_text', error_msg)
+            
+            # Check if it's a 404 (model not found) - this is a real error
+            if status_code == 404 or '404' in error_msg or 'NOT_FOUND' in error_msg:
+                logging.error(f"✗ [Gemini API] Model not found: {error_msg}")
+                print(f"✗ [Gemini API] Model not found - check models.yaml configuration")
+                init_status['gemini_api']['error'] = error_msg
+                return False
+            # Check if it's a 429 (rate limit/quota exceeded) - API key is valid, just quota issue
+            elif status_code == 429 or '429' in error_msg or 'RESOURCE_EXHAUSTED' in error_msg or 'quota' in response_text.lower():
+                logging.info("ℹ️  [Gemini API] Rate limit/quota exceeded (API key is valid)")
+                print("ℹ️  [Gemini API] Rate limit/quota exceeded (API key is valid, will work when quota resets)")
+                init_status['gemini_api']['ready'] = True  # Key is valid, just quota issue
+                init_status['gemini_api']['error'] = "Rate limit/quota exceeded"
+                return True  # Don't fail initialization - key is valid
+            else:
+                logging.warning(f"⚠ [Gemini API] Validation failed: {e}")
+                print("⚠ [Gemini API] Validation failed - key exists, may be network issue")
+                init_status['gemini_api']['ready'] = True
+                return True
+    except Exception as e:
+        error_msg = f"Gemini API validation failed: {e}"
+        logging.error(f"✗ [Gemini API] {error_msg}")
+        print(f"✗ [Gemini API] {error_msg}")
+        init_status['gemini_api']['error'] = str(e)
+        return False
+
+def validate_inflection_api():
+    """Validate Inflection AI API key"""
+    try:
+        logging.info("🔄 [Inflection AI] Validating API key...")
+        print("🔄 [Inflection AI] Validating API key...")
+        api_key = os.getenv("INFLECTION_AI_API_KEY")
+        if not api_key:
+            logging.warning("⚠ [Inflection AI] API key not found")
+            print("⚠ [Inflection AI] API key not found")
+            init_status['inflection_api']['ready'] = False
+            return False
+        url = "https://api.inflection.ai/external/api/inference"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "context": [{"text": "test", "type": "Human"}],
+            "config": "Pi-3.1"
+        }
+        response = requests.post(url, headers=headers, json=data, timeout=10)
+        if response.status_code == 200:
+            logging.info("✓ [Inflection AI] API key validated")
+            print("✓ [Inflection AI] API key validated")
+            init_status['inflection_api']['ready'] = True
+            return True
+        else:
+            logging.warning(f"⚠ [Inflection AI] Validation failed: {response.status_code}")
+            print(f"⚠ [Inflection AI] Validation failed: {response.status_code}")
+            init_status['inflection_api']['ready'] = False
+            return False
+    except Exception as e:
+        error_msg = f"Inflection AI validation failed: {e}"
+        logging.warning(f"⚠ [Inflection AI] {error_msg}")
+        print(f"⚠ [Inflection AI] {error_msg}")
+        init_status['inflection_api']['ready'] = False
+        return False
+
+def validate_quantum_api():
+    """Validate Quantum Random Numbers API key (optional component)"""
+    try:
+        logging.info("🔄 [Quantum API] Validating API key...")
+        print("🔄 [Quantum API] Validating API key...")
+        api_key = os.getenv("ANU_QUANTUM_API_KEY")
+        if not api_key:
+            logging.info("ℹ️  [Quantum API] API key not found (optional - will use pseudo-random)")
+            print("ℹ️  [Quantum API] API key not found (optional - will use pseudo-random)")
+            init_status['quantum_api']['ready'] = False
+            return True  # Not an error - optional component
+        url = "https://api.quantumnumbers.anu.edu.au"
+        headers = {"x-api-key": api_key}
+        params = {"length": 1, "type": "uint8"}
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        if response.status_code == 200:
+            logging.info("✓ [Quantum API] API key validated")
+            print("✓ [Quantum API] API key validated")
+            init_status['quantum_api']['ready'] = True
+            return True
+        elif response.status_code == 429:
+            # Rate limit - not an error, just unavailable temporarily
+            logging.info("ℹ️  [Quantum API] Rate limited (optional - will use pseudo-random)")
+            print("ℹ️  [Quantum API] Rate limited (optional - will use pseudo-random)")
+            init_status['quantum_api']['ready'] = False
+            return True  # Not an error - optional component
+        else:
+            logging.info(f"ℹ️  [Quantum API] Validation failed: {response.status_code} (optional - will use pseudo-random)")
+            print(f"ℹ️  [Quantum API] Validation failed: {response.status_code} (optional - will use pseudo-random)")
+            init_status['quantum_api']['ready'] = False
+            return True  # Not an error - optional component
+    except Exception as e:
+        # Any exception is not critical - quantum randomness is optional
+        logging.info(f"ℹ️  [Quantum API] Unavailable: {e} (optional - will use pseudo-random)")
+        print(f"ℹ️  [Quantum API] Unavailable: {e} (optional - will use pseudo-random)")
+        init_status['quantum_api']['ready'] = False
+        return True  # Not an error - optional component
+
+def run_parallel_initialization():
+    """Run all initialization steps in parallel"""
+    start_time = time.time()
+    
+    logging.info("=" * 70)
+    logging.info("GALATEA AI PARALLEL INITIALIZATION")
+    logging.info("=" * 70)
+    logging.info("Starting parallel initialization of all components...")
+    logging.info("")
+    print("=" * 70)
+    print("GALATEA AI PARALLEL INITIALIZATION")
+    print("=" * 70)
+    print("Starting parallel initialization of all components...")
+    print("")
+    
+    tasks = [
+        ("JSON Memory", initialize_json_memory),
+        ("Sentiment Analyzer", initialize_sentiment_analyzer),
+        ("Gemini API", validate_gemini_api),
+        ("Inflection AI", validate_inflection_api),
+        ("Quantum API", validate_quantum_api),
+    ]
+    
+    completed_count = 0
+    total_tasks = len(tasks)
+    
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(task[1]): task[0] for task in tasks}
+        
+        for future in as_completed(futures):
+            task_name = futures[future]
+            completed_count += 1
+            try:
+                result = future.result()
+                if result:
+                    logging.info(f"✅ [{task_name}] Completed successfully ({completed_count}/{total_tasks})")
+                    print(f"✅ [{task_name}] Completed successfully ({completed_count}/{total_tasks})")
+                else:
+                    logging.warning(f"⚠️  [{task_name}] Completed with warnings ({completed_count}/{total_tasks})")
+                    print(f"⚠️  [{task_name}] Completed with warnings ({completed_count}/{total_tasks})")
+            except Exception as e:
+                logging.error(f"❌ [{task_name}] Failed: {e} ({completed_count}/{total_tasks})")
+                print(f"❌ [{task_name}] Failed: {e} ({completed_count}/{total_tasks})")
+    
+    elapsed_time = time.time() - start_time
+    
+    logging.info("")
+    logging.info("=" * 70)
+    logging.info("INITIALIZATION SUMMARY")
+    logging.info("=" * 70)
+    print("")
+    print("=" * 70)
+    print("INITIALIZATION SUMMARY")
+    print("=" * 70)
+    
+    all_ready = True
+    critical_ready = True
+    
+    for component, status in init_status.items():
+        status_icon = "✓" if status['ready'] else "✗"
+        error_info = f" - {status['error']}" if status['error'] else ""
+        status_msg = f"{status_icon} {component.upper()}: {'READY' if status['ready'] else 'FAILED'}{error_info}"
+        logging.info(status_msg)
+        print(status_msg)
+        
+        if component in ['json_memory', 'sentiment_analyzer', 'gemini_api']:
+            if not status['ready']:
+                critical_ready = False
+        
+        if not status['ready']:
+            all_ready = False
+    
+    logging.info("")
+    logging.info(f"⏱️  Total initialization time: {elapsed_time:.2f} seconds")
+    logging.info("")
+    print("")
+    print(f"⏱️  Total initialization time: {elapsed_time:.2f} seconds")
+    print("")
+    
+    if critical_ready:
+        if all_ready:
+            logging.info("✅ ALL COMPONENTS INITIALIZED SUCCESSFULLY")
+            logging.info("🎉 Galatea AI is ready to use!")
+            print("✅ ALL COMPONENTS INITIALIZED SUCCESSFULLY")
+            print("🎉 Galatea AI is ready to use!")
+            return True
+        else:
+            logging.info("⚠️  CRITICAL COMPONENTS READY (some optional components failed)")
+            logging.info("✅ Galatea AI is ready to use (with limited features)")
+            print("⚠️  CRITICAL COMPONENTS READY (some optional components failed)")
+            print("✅ Galatea AI is ready to use (with limited features)")
+            return True
+    else:
+        logging.error("❌ CRITICAL COMPONENTS FAILED")
+        logging.error("⚠️  Galatea AI may not function properly")
+        print("❌ CRITICAL COMPONENTS FAILED")
+        print("⚠️  Galatea AI may not function properly")
+        return False
 
 def initialize_components():
-    """Initialize Galatea components (runs after init script completes)"""
+    """Initialize Galatea components"""
     global galatea_ai, dialogue_engine, avatar_engine, is_initialized, initializing
-    global current_init_retry, gemini_initialized, init_script_complete
+    global current_init_retry, gemini_initialized
     
     if initializing or is_initialized:
         return
-    
-    # Wait for initialization script to complete (poll every 2 seconds)
-    max_wait_time = 300  # 5 minutes
-    wait_start = time.time()
-    while not init_script_complete:
-        elapsed = time.time() - wait_start
-        if elapsed > max_wait_time:
-            logging.warning("Initialization script timeout - proceeding anyway")
-            break
-        logging.info(f"Waiting for initialization script to complete... ({elapsed:.0f}s)")
-        time.sleep(2)
-    
-    if not init_script_complete:
-        logging.warning("Proceeding with component initialization despite init script not completing")
 
     if missing_gemini_key:
         logging.error("Initialization aborted: GEMINI_API_KEY missing")
@@ -207,6 +464,19 @@ def initialize_components():
         dialogue_engine = DialogueEngine(galatea_ai)
         avatar_engine = AvatarEngine()
         avatar_engine.update_avatar(galatea_ai.emotional_state)
+        
+        # Start quantum emotion service (background thread)
+        global quantum_emotion_service
+        try:
+            from quantum_emotion_service import QuantumEmotionService
+            quantum_emotion_service = QuantumEmotionService(galatea_ai.emotional_agent)
+            if quantum_emotion_service.start():
+                logging.info("✓ Quantum Emotion Service started")
+            else:
+                logging.info("ℹ️  Quantum Emotion Service not started (no API key or unavailable)")
+        except Exception as e:
+            logging.warning(f"⚠ Could not start Quantum Emotion Service: {e}")
+            quantum_emotion_service = None
         
         # Check if all components are fully initialized
         init_status = galatea_ai.get_initialization_status()
@@ -264,11 +534,7 @@ def initialize_components():
 def home():
     # Add error handling for template rendering
     try:
-        # Start initialization script in background if not already started
-        if not init_script_complete and not init_script_running:
-            Thread(target=run_init_script, daemon=True).start()
-        
-        # Start component initialization after init script (will wait if script not done)
+        # Start component initialization if not already started
         if not is_initialized and not initializing and not missing_gemini_key:
             Thread(target=initialize_components, daemon=True).start()
             
@@ -557,8 +823,6 @@ def availability():
 @app.route('/api/is_initialized')
 def is_initialized_endpoint():
     """Lightweight endpoint for polling initialization progress"""
-    global init_script_running, init_script_complete
-    
     # Determine current initialization state
     if missing_gemini_key:
         return jsonify({
@@ -567,16 +831,6 @@ def is_initialized_endpoint():
             'missing_gemini_key': True,
             'error_page': url_for('error_page'),
             'status': 'missing_api_key'
-        })
-    
-    # Check if init script is still running
-    if init_script_running:
-        return jsonify({
-            'is_initialized': False,
-            'initializing': True,
-            'missing_gemini_key': False,
-            'status': 'running_init_script',
-            'message': 'Running parallel initialization...'
         })
     
     # Check if components are initializing
@@ -626,20 +880,48 @@ def error_page():
 
 if __name__ == '__main__':
     print("Starting Galatea Web Interface...")
-    print("Initialization will begin automatically when the app starts.")
     
-    # Start initialization script immediately when app starts
+    # Run parallel initialization BEFORE starting Flask app
     logging.info("=" * 70)
     logging.info("STARTING GALATEA AI APPLICATION")
     logging.info("=" * 70)
-    logging.info("Launching parallel initialization script...")
+    logging.info("Running parallel initialization...")
+    print("=" * 70)
+    print("STARTING GALATEA AI APPLICATION")
+    print("=" * 70)
+    print("Running parallel initialization...")
+    print("")
     
-    # Start initialization script in background thread
-    Thread(target=run_init_script, daemon=True).start()
+    # Run parallel initialization synchronously
+    init_success = run_parallel_initialization()
     
-    # Start component initialization (will wait for init script)
-    Thread(target=initialize_components, daemon=True).start()
-
+    if not init_success:
+        logging.error("=" * 70)
+        logging.error("CRITICAL: Parallel initialization failed")
+        logging.error("Application will exit")
+        logging.error("=" * 70)
+        print("=" * 70)
+        print("CRITICAL: Parallel initialization failed")
+        print("Application will exit")
+        print("=" * 70)
+        sys.exit(1)
+    
+    # Now initialize Galatea components
+    logging.info("Initializing Galatea AI components...")
+    print("Initializing Galatea AI components...")
+    initialize_components()
+    
+    if not is_initialized:
+        logging.error("=" * 70)
+        logging.error("CRITICAL: Component initialization failed")
+        logging.error("Application will exit")
+        logging.error("=" * 70)
+        print("=" * 70)
+        print("CRITICAL: Component initialization failed")
+        print("Application will exit")
+        print("=" * 70)
+        sys.exit(1)
+    
     # Add debug logs for avatar shape changes
     logging.info("Avatar system initialized with default shape.")
 
@@ -648,6 +930,8 @@ if __name__ == '__main__':
 
     logging.info(f"Flask server starting on port {port}...")
     logging.info("Frontend will poll /api/is_initialized for status")
+    print(f"\nFlask server starting on port {port}...")
+    print("Frontend will poll /api/is_initialized for status\n")
     
     # Bind to 0.0.0.0 for external access (required for Hugging Face Spaces)
     app.run(host='0.0.0.0', port=port, debug=True)
