@@ -94,18 +94,23 @@ class GalateaAI:
         
     def initialize_gemini(self):
         """Initialize the Gemini API with API key from .env file"""
+        self.gemini_available = False  # Default to False
+
         try:
             # Get API key from environment variable
             api_key = os.getenv("GEMINI_API_KEY")
+
+            logging.info(f"Checking for GEMINI_API_KEY... Found: {bool(api_key)}")
 
             if not api_key:
                 # Log error and fail gracefully (no input prompt for web deployment)
                 logging.error("GEMINI_API_KEY not found in environment variables.")
                 logging.error("Please set GEMINI_API_KEY in your environment or .env file")
-                self.gemini_available = False
+                logging.error("Bot will use fallback responses only.")
                 return
 
             # Configure the Gemini API
+            logging.info("Configuring Gemini API...")
             genai.configure(api_key=api_key)
             
             # List available models to ensure we're using a valid one
@@ -139,20 +144,24 @@ class GalateaAI:
                     
                 logging.info(f"Selected model: {model_name}")
                 self.gemini_model = genai.GenerativeModel(model_name)
-                
+
                 # Test the model with a simple prompt
+                logging.info("Testing Gemini API with a simple prompt...")
                 test_response = self.gemini_model.generate_content("Hello")
-                logging.info("Test response received from Gemini API")
+                logging.info(f"Test response received: {test_response.text if hasattr(test_response, 'text') else 'No text'}")
                 self.gemini_available = True
-                print(f"Gemini API initialized successfully with model: {model_name}")
-                
+                logging.info(f"✓ Gemini API initialized successfully with model: {model_name}")
+                print(f"✓ Gemini API initialized successfully with model: {model_name}")
+
             except Exception as e:
                 logging.error(f"Error initializing Gemini model: {e}")
-                raise
-                
+                logging.error("Bot will use fallback responses only.")
+                self.gemini_available = False
+
         except Exception as e:
             logging.error(f"Failed to initialize Gemini API: {e}")
-            print(f"Failed to initialize Gemini API: {e}")
+            logging.error("Bot will use fallback responses only.")
+            print(f"✗ Failed to initialize Gemini API: {e}")
             self.gemini_available = False
 
     def process_input(self, user_input):
@@ -212,18 +221,18 @@ class GalateaAI:
             try:
                 # Create a prompt that includes emotional context and intent
                 emotions_text = ", ".join([f"{emotion}: {value:.2f}" for emotion, value in emotional_state.items()])
-                
+
                 # Create a character prompt for Gemini
                 prompt = f"""
                 You are Galatea, an AI assistant with the following emotional state:
                 {emotions_text}
-                
+
                 User input: "{original_input}"
-                
+
                 Respond in character as Galatea. Keep your response concise (under 50 words) and reflect your emotional state in your tone.
                 If you're feeling more joy, be more enthusiastic. If sad, be more melancholic.
                 """
-                
+
                 logging.info("Sending request to Gemini API")
                 # Get response from Gemini with safety settings
                 generation_config = {
@@ -231,38 +240,45 @@ class GalateaAI:
                     "top_p": 0.8,
                     "top_k": 40
                 }
-                
+
                 response = self.gemini_model.generate_content(
                     prompt,
                     generation_config=generation_config
                 )
-                
+
                 # Check if response is valid and return it
                 if response and hasattr(response, 'text'):
+                    logging.info(f"Gemini response received successfully")
                     return response.text.strip()
                 elif hasattr(response, 'parts'):
                     # Try alternate access method
+                    logging.info(f"Gemini response received via parts")
                     return response.parts[0].text.strip()
                 else:
                     logging.warning(f"Unexpected response format: {response}")
                     # Fall back to basic response
                     return "I'm processing that..."
-            
+
             except Exception as e:
                 logging.error(f"Error using Gemini API: {e}")
+                logging.error(f"Full error details: {type(e).__name__}: {str(e)}")
                 print(f"Error using Gemini API: {e}")
                 # Fall back to basic response logic
-        
+        else:
+            logging.warning("Gemini API not available - using fallback responses")
+
         # Original response generation logic as fallback
+        logging.info(f"Using fallback response. Intent: {intent}, Keywords: {keywords[:5]}")
+
         if intent == "question":
             if "you" in keywords:
-                return "I am, what you want me to be."
+                return "I am still learning about myself. My Gemini AI is not responding right now."
             else:
-                return "I will have to look into that"
+                return "I'd love to help with that, but my AI system isn't responding at the moment."
         elif intent == "gratitude":
             return "You're welcome!"
         else:
-            return "Interesting."
+            return "I hear you, though my full AI capabilities aren't active right now. Please check if my API key is configured."
 
     def update_knowledge(self, keywords, user_input):
         #for new key words remember them
