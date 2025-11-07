@@ -95,16 +95,16 @@ class GalateaAI:
     def initialize_gemini(self):
         """Initialize the Gemini API with API key from .env file"""
         try:
-            # Get API key from environment variable 
+            # Get API key from environment variable
             api_key = os.getenv("GEMINI_API_KEY")
-            
+
             if not api_key:
-                # Prompt user for API key if not found in environment variables
-                logging.warning("Gemini API key not found in environment variables.")
-                print("Gemini API key not found in environment variables.")
-                print("Please create a .env file with your GEMINI_API_KEY or enter it now:")
-                api_key = input("Enter your Gemini API key: ")
-            
+                # Log error and fail gracefully (no input prompt for web deployment)
+                logging.error("GEMINI_API_KEY not found in environment variables.")
+                logging.error("Please set GEMINI_API_KEY in your environment or .env file")
+                self.gemini_available = False
+                return
+
             # Configure the Gemini API
             genai.configure(api_key=api_key)
             
