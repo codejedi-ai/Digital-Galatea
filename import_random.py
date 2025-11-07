@@ -113,48 +113,50 @@ class GalateaAI:
             logging.info("Configuring Gemini API...")
             genai.configure(api_key=api_key)
             
-            # List available models to ensure we're using a valid one
+            # Use Gemini 2.0 Flash (latest and fastest model)
             try:
-                models = genai.list_models()
-                available_models = [model.name for model in models]
-                logging.info(f"Available Gemini models: {available_models}")
-                
-                # Look for newer models first - gemini-1.5-flash or gemini-1.5-pro
+                # Try Gemini 2.0 Flash first (newest model)
                 preferred_models = [
-                    "models/gemini-1.5-flash",
-                    "models/gemini-1.5-pro", 
-                    "models/gemini-1.5-flash-latest",
-                    "models/gemini-1.5-pro-latest"
+                    "gemini-2.0-flash-exp",
+                    "gemini-2.0-flash",
+                    "gemini-1.5-flash-latest",
+                    "gemini-1.5-flash",
                 ]
-                
-                # Find the first available preferred model
-                model_name = None
-                for preferred in preferred_models:
-                    matching = [m for m in available_models if preferred in m]
-                    if matching:
-                        model_name = matching[0]
-                        break
-                
-                # If no preferred model found, use any available model
-                if not model_name:
-                    model_name = available_models[0] if available_models else None
-                    
-                if not model_name:
-                    raise ValueError("No suitable Gemini models available")
-                    
-                logging.info(f"Selected model: {model_name}")
-                self.gemini_model = genai.GenerativeModel(model_name)
 
-                # Test the model with a simple prompt
-                logging.info("Testing Gemini API with a simple prompt...")
-                test_response = self.gemini_model.generate_content("Hello")
-                logging.info(f"Test response received: {test_response.text if hasattr(test_response, 'text') else 'No text'}")
-                self.gemini_available = True
-                logging.info(f"✓ Gemini API initialized successfully with model: {model_name}")
-                print(f"✓ Gemini API initialized successfully with model: {model_name}")
+                model_name = None
+                last_error = None
+
+                for model in preferred_models:
+                    try:
+                        logging.info(f"Attempting to initialize with model: {model}")
+                        self.gemini_model = genai.GenerativeModel(model)
+
+                        # Test the model with a simple prompt
+                        logging.info(f"Testing {model} with a simple prompt...")
+                        test_response = self.gemini_model.generate_content("Hello")
+
+                        if hasattr(test_response, 'text') and test_response.text:
+                            logging.info(f"✓ Test response received: {test_response.text[:50]}...")
+                            model_name = model
+                            self.gemini_available = True
+                            logging.info(f"✓ Gemini API initialized successfully with model: {model_name}")
+                            print(f"✓ Gemini API initialized successfully with model: {model_name}")
+                            break
+                        else:
+                            logging.warning(f"Model {model} returned empty response")
+                            continue
+
+                    except Exception as e:
+                        last_error = e
+                        logging.warning(f"Model {model} failed: {e}")
+                        continue
+
+                if not model_name:
+                    raise Exception(f"All models failed. Last error: {last_error}")
 
             except Exception as e:
                 logging.error(f"Error initializing Gemini model: {e}")
+                logging.error(f"Full error: {type(e).__name__}: {str(e)}")
                 logging.error("Bot will use fallback responses only.")
                 self.gemini_available = False
 
