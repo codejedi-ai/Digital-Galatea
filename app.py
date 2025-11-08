@@ -385,14 +385,14 @@ def run_parallel_initialization():
             try:
                 result = future.result()
                 if result:
-                    logging.info(f"✅ [{task_name}] Completed successfully ({completed_count}/{total_tasks})")
-                    print(f"✅ [{task_name}] Completed successfully ({completed_count}/{total_tasks})")
+                    logging.info(f"✅ [{task_name}] Completed successfully")
+                    print(f"✅ [{task_name}] Completed successfully")
                 else:
-                    logging.warning(f"⚠️  [{task_name}] Completed with warnings ({completed_count}/{total_tasks})")
-                    print(f"⚠️  [{task_name}] Completed with warnings ({completed_count}/{total_tasks})")
+                    logging.warning(f"⚠️  [{task_name}] Completed with warnings")
+                    print(f"⚠️  [{task_name}] Completed with warnings")
             except Exception as e:
-                logging.error(f"❌ [{task_name}] Failed: {e} ({completed_count}/{total_tasks})")
-                print(f"❌ [{task_name}] Failed: {e} ({completed_count}/{total_tasks})")
+                logging.error(f"❌ [{task_name}] Failed: {e}")
+                print(f"❌ [{task_name}] Failed: {e}")
         
         # Verify all tasks completed
         if completed_count < total_tasks:
