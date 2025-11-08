@@ -486,9 +486,9 @@ def initialize_components():
         # CRITICAL: Only mark as initialized if ALL components are ready
         # If any component fails, EXIT the application immediately
         if init_status['fully_initialized']:
-        is_initialized = True
+            is_initialized = True
             logging.info("✓ Galatea AI system fully initialized and ready")
-        logging.info(f"Emotions initialized: {galatea_ai.emotional_state}")
+            logging.info(f"Emotions initialized: {galatea_ai.emotional_state}")
         else:
             logging.error("=" * 60)
             logging.error("❌ INITIALIZATION FAILED - EXITING APPLICATION")
