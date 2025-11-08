@@ -233,9 +233,14 @@ def validate_deepseek_api():
                 return False
         except Exception as e:
             error_msg = str(e)
+            error_type = type(e).__name__
             # Check status code from exception if available
             status_code = getattr(e, 'status_code', None)
             response_text = getattr(e, 'response_text', error_msg)
+            
+            # Log the full error for debugging
+            logging.error(f"✗ [DeepSeek API] Validation exception: {error_type}: {error_msg}")
+            print(f"✗ [DeepSeek API] Validation exception: {error_type}: {error_msg}")
             
             # Check if it's a 404 (model not found) - this is a real error
             if status_code == 404 or '404' in error_msg or 'NOT_FOUND' in error_msg:
@@ -250,11 +255,18 @@ def validate_deepseek_api():
                 init_status['deepseek_api']['ready'] = True  # Key is valid, just quota issue
                 init_status['deepseek_api']['error'] = "Rate limit/quota exceeded"
                 return True  # Don't fail initialization - key is valid
+            # Check if it's an authentication error (401) - invalid API key
+            elif status_code == 401 or '401' in error_msg or 'unauthorized' in error_msg.lower() or 'authentication' in error_msg.lower():
+                logging.error(f"✗ [DeepSeek API] Authentication failed - invalid API key: {error_msg}")
+                print(f"✗ [DeepSeek API] Authentication failed - check your DEEPSEEK_API_KEY")
+                init_status['deepseek_api']['error'] = f"Authentication failed: {error_msg}"
+                return False
             else:
                 logging.warning(f"⚠ [DeepSeek API] Validation failed: {e}")
-                print("⚠ [DeepSeek API] Validation failed - key exists, may be network issue")
-                init_status['deepseek_api']['ready'] = True
-                return True
+                print(f"⚠ [DeepSeek API] Validation failed - key exists, may be network issue. Error: {error_msg}")
+                init_status['deepseek_api']['ready'] = False
+                init_status['deepseek_api']['error'] = error_msg
+                return False
     except Exception as e:
         error_msg = f"DeepSeek API validation failed: {e}"
         logging.error(f"✗ [DeepSeek API] {error_msg}")
