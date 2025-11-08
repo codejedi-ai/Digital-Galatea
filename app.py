@@ -393,6 +393,14 @@ def run_parallel_initialization():
             except Exception as e:
                 logging.error(f"❌ [{task_name}] Failed: {e} ({completed_count}/{total_tasks})")
                 print(f"❌ [{task_name}] Failed: {e} ({completed_count}/{total_tasks})")
+        
+        # Verify all tasks completed
+        if completed_count < total_tasks:
+            logging.warning(f"⚠️  Only {completed_count}/{total_tasks} tasks completed. Some tasks may have timed out or failed silently.")
+            print(f"⚠️  Only {completed_count}/{total_tasks} tasks completed. Some tasks may have timed out or failed silently.")
+        else:
+            logging.info(f"✓ All {total_tasks} tasks completed")
+            print(f"✓ All {total_tasks} tasks completed")
     
     elapsed_time = time.time() - start_time
     
