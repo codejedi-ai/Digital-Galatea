@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import MODEL_CONFIG
 from systems import MemorySystem
 from agents import (
-    MemoryAgent, GeminiThinkingAgent, PiResponseAgent,
+    MemoryAgent, DeepSeekThinkingAgent, PiResponseAgent,
     EmotionalStateAgent, SentimentAgent
 )
 
@@ -51,7 +51,7 @@ class GalateaAI:
         # Initialize agents
         logging.info("Initializing agents...")
         self.memory_agent = MemoryAgent(self.memory_system, config=self.config)
-        self.gemini_agent = GeminiThinkingAgent(config=self.config)
+        self.deepseek_agent = DeepSeekThinkingAgent(config=self.config)
         self.pi_agent = PiResponseAgent(config=self.config)
         self.emotional_agent = EmotionalStateAgent(config=self.config)
         self.sentiment_agent = SentimentAgent(config=self.config)
@@ -59,8 +59,8 @@ class GalateaAI:
         # Track initialization status
         self.memory_system_ready = self.memory_agent.is_ready()
         self.sentiment_analyzer_ready = self.sentiment_agent.is_ready()
-        self.models_ready = self.gemini_agent.is_ready() or self.pi_agent.is_ready()
-        self.api_keys_valid = self.gemini_agent.is_ready() or self.pi_agent.is_ready()
+        self.models_ready = self.deepseek_agent.is_ready() or self.pi_agent.is_ready()
+        self.api_keys_valid = self.deepseek_agent.is_ready() or self.pi_agent.is_ready()
         
         # CRITICAL: Verify all critical systems are ready, raise exception if not
         if not self.memory_system_ready:
@@ -68,16 +68,16 @@ class GalateaAI:
         if not self.sentiment_analyzer_ready:
             raise RuntimeError("Sentiment analyzer failed to initialize - application cannot continue")
         if not self.models_ready:
-            raise RuntimeError("No AI models available (Gemini or Pi-3.1) - application cannot continue")
+            raise RuntimeError("No AI models available (DeepSeek or Pi-3.1) - application cannot continue")
         if not self.api_keys_valid:
             raise RuntimeError("API keys are invalid or missing - application cannot continue")
         if not self.pi_agent.is_ready():
             raise RuntimeError("Pi-3.1 (PHI) model is not available - application cannot continue")
-        if not self.gemini_agent.is_ready():
-            raise RuntimeError("Gemini model is not available - application cannot continue")
+        if not self.deepseek_agent.is_ready():
+            raise RuntimeError("DeepSeek model is not available - application cannot continue")
         
         # Legacy compatibility
-        self.gemini_available = self.gemini_agent.is_ready()
+        self.deepseek_available = self.deepseek_agent.is_ready()
         self.inflection_ai_available = self.pi_agent.is_ready()
         self.quantum_random_available = self.emotional_agent.quantum_random_available
         
@@ -108,7 +108,7 @@ class GalateaAI:
             "sentiment_analyzer": self.sentiment_analyzer_ready,
             "models": self.models_ready,
             "api_keys": self.api_keys_valid,
-            "gemini_available": self.gemini_agent.is_ready() if hasattr(self, 'gemini_agent') else False,
+            "deepseek_available": self.deepseek_agent.is_ready() if hasattr(self, 'deepseek_agent') else False,
             "inflection_ai_available": self.pi_agent.is_ready() if hasattr(self, 'pi_agent') else False,
             "azure_text_analytics_available": self.sentiment_agent.azure_agent.is_ready() if hasattr(self, 'sentiment_agent') else False,
             "fully_initialized": self.is_fully_initialized()
@@ -189,16 +189,16 @@ class GalateaAI:
         # Step 4: Retrieve memories
         retrieved_memories = self.memory_agent.retrieve_memories(user_input)
         
-        # Step 5: Chain workflow: PHI(GEMINI(User inputs, read with past memory), emotionalstate)
-        # Step 5a: GEMINI(User inputs, read with past memory)
-        thinking_context = self.gemini_agent.think(
+        # Step 5: Chain workflow: PHI(DEEPSEEK(User inputs, read with past memory), emotionalstate)
+        # Step 5a: DEEPSEEK(User inputs, read with past memory)
+        thinking_context = self.deepseek_agent.think(
             user_input,
             current_emotional_state,
             self.conversation_history,
             retrieved_memories=retrieved_memories
         )
         
-        # Step 5b: PHI(GEMINI result, emotionalstate)
+        # Step 5b: PHI(DEEPSEEK result, emotionalstate)
         response = self.pi_agent.respond(
             user_input,
             current_emotional_state,

@@ -1,4 +1,4 @@
-"""Gemini Thinking Agent - responsible for thinking and analysis using Gemini"""
+"""DeepSeek Thinking Agent - responsible for thinking and analysis using DeepSeek Reasoner"""
 import os
 import sys
 import logging
@@ -8,34 +8,34 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import MODEL_CONFIG
 from llm_wrapper import LLMWrapper
 
-class GeminiThinkingAgent:
-    """Agent responsible for thinking and analysis using Gemini"""
+class DeepSeekThinkingAgent:
+    """Agent responsible for thinking and analysis using DeepSeek Reasoner"""
     
     def __init__(self, config=None):
         self.config = config or MODEL_CONFIG or {}
-        self.gemini_available = False
+        self.deepseek_available = False
         
         # Get model from config
-        gemini_config = self.config.get('gemini', {}) if self.config else {}
-        gemini_model = gemini_config.get('model', 'gemini-2.0-flash-exp')
+        deepseek_config = self.config.get('deepseek', {}) if self.config else {}
+        deepseek_model = deepseek_config.get('model', 'deepseek-reasoner')
         
         # Initialize LLM wrapper with the model
-        self.llm_wrapper = LLMWrapper(gemini_model=gemini_model, config=self.config)
+        self.llm_wrapper = LLMWrapper(deepseek_model=deepseek_model, config=self.config)
         self._initialize()
     
     def _initialize(self):
-        """Initialize Gemini API availability"""
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        if gemini_key:
-            self.gemini_available = True
-            logging.info("[GeminiThinkingAgent] ✓ Initialized and ready")
+        """Initialize DeepSeek API availability"""
+        deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+        if deepseek_key:
+            self.deepseek_available = True
+            logging.info("[DeepSeekThinkingAgent] ✓ Initialized and ready")
         else:
-            logging.warning("[GeminiThinkingAgent] ✗ GEMINI_API_KEY not found")
+            logging.warning("[DeepSeekThinkingAgent] ✗ DEEPSEEK_API_KEY not found")
     
     def think(self, user_input, emotional_state, conversation_history, retrieved_memories=None):
         """Think about and analyze the conversation context"""
-        if not self.gemini_available:
-            logging.warning("[GeminiThinkingAgent] Not available")
+        if not self.deepseek_available:
+            logging.warning("[DeepSeekThinkingAgent] Not available")
             return None
         
         try:
@@ -78,36 +78,36 @@ Keep your analysis concise (2-3 sentences). Focus on what matters for crafting a
                 {"role": "user", "content": thinking_prompt}
             ]
             
-            logging.info("[GeminiThinkingAgent] Processing thinking request...")
+            logging.info("[DeepSeekThinkingAgent] Processing thinking request...")
             
             # Get hyperparameters from config
-            gemini_config = self.config.get('gemini', {}) if self.config else {}
-            temperature = gemini_config.get('temperature', 0.5)
-            max_tokens = gemini_config.get('max_tokens', 200)
+            deepseek_config = self.config.get('deepseek', {}) if self.config else {}
+            temperature = deepseek_config.get('temperature', 0.5)
+            max_tokens = deepseek_config.get('max_tokens', 200)
             
-            # Call Gemini model (model is set in wrapper initialization)
+            # Call DeepSeek model (model is set in wrapper initialization)
             try:
-                thinking_result = self.llm_wrapper.call_gemini(
+                thinking_result = self.llm_wrapper.call_deepseek(
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
                 
                 if thinking_result and len(thinking_result) > 0:
-                    logging.info("[GeminiThinkingAgent] ✓ Thinking completed")
+                    logging.info("[DeepSeekThinkingAgent] ✓ Thinking completed")
                     return thinking_result
                 else:
-                    logging.error("[GeminiThinkingAgent] Model returned empty result")
+                    logging.error("[DeepSeekThinkingAgent] Model returned empty result")
                     return None
             except Exception as e:
-                logging.error(f"[GeminiThinkingAgent] Model {self.llm_wrapper.gemini_model} failed: {e}")
+                logging.error(f"[DeepSeekThinkingAgent] Model {self.llm_wrapper.deepseek_model} failed: {e}")
                 return None
             
         except Exception as e:
-            logging.error(f"[GeminiThinkingAgent] Error: {e}")
+            logging.error(f"[DeepSeekThinkingAgent] Error: {e}")
             return None
     
     def is_ready(self):
         """Check if agent is ready"""
-        return self.gemini_available
+        return self.deepseek_available
 

@@ -5,8 +5,9 @@ import time
 import json
 from dotenv import load_dotenv
 import logging
-from threading import Thread
+from threading import Thread, Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import deque
 import nltk
 import requests
 
@@ -20,34 +21,32 @@ load_dotenv()
 logging.info("=" * 60)
 logging.info("ENVIRONMENT VARIABLES CHECK")
 logging.info("=" * 60)
-gemini_key = os.environ.get('GEMINI_API_KEY')
-missing_gemini_key = False
-if gemini_key:
-    logging.info(f"✓ GEMINI_API_KEY found (length: {len(gemini_key)} chars)")
-    logging.info(f"  First 10 chars: {gemini_key[:10]}...")
+deepseek_key = os.environ.get('DEEPSEEK_API_KEY')
+missing_deepseek_key = False
+if deepseek_key:
+    logging.info(f"✓ DEEPSEEK_API_KEY found (length: {len(deepseek_key)} chars)")
+    logging.info(f"  First 10 chars: {deepseek_key[:10]}...")
 else:
-    missing_gemini_key = True
+    missing_deepseek_key = True
     logging.error("=" * 60)
-    logging.error("✗ GEMINI_API_KEY not found in environment!")
+    logging.error("✗ DEEPSEEK_API_KEY not found in environment!")
     logging.error("=" * 60)
     logging.error("")
-    logging.error("The GEMINI_API_KEY environment variable is required for full functionality.")
+    logging.error("The DEEPSEEK_API_KEY environment variable is required for full functionality.")
     logging.error("")
     logging.error("For Hugging Face Spaces:")
     logging.error("  1. Go to Settings → Repository secrets")
     logging.error("  2. Click 'New secret'")
-    logging.error("  3. Name: GEMINI_API_KEY")
-    logging.error("  4. Value: [Your Google Gemini API key]")
-    logging.error("  5. Get a key from: https://ai.google.dev/")
+    logging.error("  3. Name: DEEPSEEK_API_KEY")
+    logging.error("  4. Value: [Your DeepSeek API key]")
+    logging.error("  5. Get a key from: https://platform.deepseek.com/")
     logging.error("")
     logging.error("For local development:")
     logging.error("  1. Copy .env.example to .env")
     logging.error("  2. Add your API key to the .env file")
     logging.error("")
-    logging.error("Available env vars starting with 'GEMINI': " +
-                 str([k for k in os.environ.keys() if 'GEMINI' in k.upper()]))
-    logging.error("Available env vars starting with 'GOOGLE': " +
-                 str([k for k in os.environ.keys() if 'GOOGLE' in k.upper()]))
+    logging.error("Available env vars starting with 'DEEPSEEK': " +
+                 str([k for k in os.environ.keys() if 'DEEPSEEK' in k.upper()]))
     logging.error("=" * 60)
 
 logging.info("=" * 60)
@@ -75,15 +74,19 @@ app = Flask(__name__, static_folder='static', template_folder='templates')
 galatea_ai = None
 dialogue_engine = None
 avatar_engine = None
-quantum_emotion_service = None
 is_initialized = False
 initializing = False
-gemini_initialized = False
+deepseek_initialized = False
 max_init_retries = 3
 current_init_retry = 0
 
+# Quantum numbers queue for /api/avatar endpoint
+quantum_numbers_queue = deque(maxlen=100)
+quantum_queue_lock = Lock()
+quantum_filling = False
+
 # Check for required environment variables
-required_env_vars = ['GEMINI_API_KEY']
+required_env_vars = ['DEEPSEEK_API_KEY']
 missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
 if missing_vars:
     logging.error(f"Missing required environment variables: {', '.join(missing_vars)}")
@@ -91,43 +94,43 @@ if missing_vars:
     print(f"⚠️ Missing required environment variables: {', '.join(missing_vars)}")
     print("Please set these in your .env file or environment")
 
-def initialize_gemini():
-    """Initialize Gemini API specifically"""
-    global gemini_initialized
+def initialize_deepseek():
+    """Initialize DeepSeek API specifically"""
+    global deepseek_initialized
     
     if not galatea_ai:
-        logging.warning("Cannot initialize Gemini: GalateaAI instance not created yet")
+        logging.warning("Cannot initialize DeepSeek: GalateaAI instance not created yet")
         return False
         
-    if missing_gemini_key:
-        logging.error("Cannot initialize Gemini: GEMINI_API_KEY is missing")
+    if missing_deepseek_key:
+        logging.error("Cannot initialize DeepSeek: DEEPSEEK_API_KEY is missing")
         return False
 
     try:
-        # Check for GEMINI_API_KEY
-        if not os.environ.get('GEMINI_API_KEY'):
-            logging.error("GEMINI_API_KEY not found in environment variables")
+        # Check for DEEPSEEK_API_KEY
+        if not os.environ.get('DEEPSEEK_API_KEY'):
+            logging.error("DEEPSEEK_API_KEY not found in environment variables")
             return False
             
-        # Check if Gemini agent is ready (initialization happens automatically in GalateaAI.__init__)
-        gemini_success = hasattr(galatea_ai, 'gemini_agent') and galatea_ai.gemini_agent.is_ready()
+        # Check if DeepSeek agent is ready (initialization happens automatically in GalateaAI.__init__)
+        deepseek_success = hasattr(galatea_ai, 'deepseek_agent') and galatea_ai.deepseek_agent.is_ready()
         
-        if gemini_success:
-            gemini_initialized = True
-            logging.info("Gemini API initialized successfully")
+        if deepseek_success:
+            deepseek_initialized = True
+            logging.info("DeepSeek API initialized successfully")
             return True
         else:
-            logging.error("Failed to initialize Gemini API")
+            logging.error("Failed to initialize DeepSeek API")
             return False
     except Exception as e:
-        logging.error(f"Error initializing Gemini API: {e}")
+        logging.error(f"Error initializing DeepSeek API: {e}")
         return False
 
 # Global status tracking for parallel initialization
 init_status = {
     'json_memory': {'ready': False, 'error': None},
     'sentiment_analyzer': {'ready': False, 'error': None},
-    'gemini_api': {'ready': False, 'error': None},
+    'deepseek_api': {'ready': False, 'error': None},
     'inflection_api': {'ready': False, 'error': None},
     'quantum_api': {'ready': False, 'error': None},
 }
@@ -195,38 +198,38 @@ def initialize_sentiment_analyzer():
         init_status['sentiment_analyzer']['ready'] = True
         return True
 
-def validate_gemini_api():
-    """Validate Gemini API key"""
+def validate_deepseek_api():
+    """Validate DeepSeek API key"""
     try:
-        logging.info("🔄 [Gemini API] Validating API key...")
-        print("🔄 [Gemini API] Validating API key...")
-        api_key = os.getenv("GEMINI_API_KEY")
+        logging.info("🔄 [DeepSeek API] Validating API key...")
+        print("🔄 [DeepSeek API] Validating API key...")
+        api_key = os.getenv("DEEPSEEK_API_KEY")
         if not api_key:
-            logging.warning("⚠ [Gemini API] API key not found")
-            print("⚠ [Gemini API] API key not found")
-            init_status['gemini_api']['ready'] = False
+            logging.warning("⚠ [DeepSeek API] API key not found")
+            print("⚠ [DeepSeek API] API key not found")
+            init_status['deepseek_api']['ready'] = False
             return False
         try:
             from llm_wrapper import LLMWrapper
             from config import MODEL_CONFIG
             
             # Get model from config
-            gemini_config = MODEL_CONFIG.get('gemini', {}) if MODEL_CONFIG else {}
-            gemini_model = gemini_config.get('model', 'gemini-2.0-flash-exp')
+            deepseek_config = MODEL_CONFIG.get('deepseek', {}) if MODEL_CONFIG else {}
+            deepseek_model = deepseek_config.get('model', 'deepseek-reasoner')
             
-            wrapper = LLMWrapper(gemini_model=gemini_model)
-            response = wrapper.call_gemini(
+            wrapper = LLMWrapper(deepseek_model=deepseek_model)
+            response = wrapper.call_deepseek(
                 messages=[{"role": "user", "content": "test"}],
                 max_tokens=5
             )
             if response:
-                logging.info("✓ [Gemini API] API key validated")
-                print("✓ [Gemini API] API key validated")
-                init_status['gemini_api']['ready'] = True
+                logging.info("✓ [DeepSeek API] API key validated")
+                print("✓ [DeepSeek API] API key validated")
+                init_status['deepseek_api']['ready'] = True
                 return True
             else:
-                logging.warning("⚠ [Gemini API] Validation failed - no response")
-                print("⚠ [Gemini API] Validation failed - key exists, may be network issue")
+                logging.warning("⚠ [DeepSeek API] Validation failed - no response")
+                print("⚠ [DeepSeek API] Validation failed - key exists, may be network issue")
                 return False
         except Exception as e:
             error_msg = str(e)
@@ -236,27 +239,27 @@ def validate_gemini_api():
             
             # Check if it's a 404 (model not found) - this is a real error
             if status_code == 404 or '404' in error_msg or 'NOT_FOUND' in error_msg:
-                logging.error(f"✗ [Gemini API] Model not found: {error_msg}")
-                print(f"✗ [Gemini API] Model not found - check models.yaml configuration")
-                init_status['gemini_api']['error'] = error_msg
+                logging.error(f"✗ [DeepSeek API] Model not found: {error_msg}")
+                print(f"✗ [DeepSeek API] Model not found - check models.yaml configuration")
+                init_status['deepseek_api']['error'] = error_msg
                 return False
             # Check if it's a 429 (rate limit/quota exceeded) - API key is valid, just quota issue
             elif status_code == 429 or '429' in error_msg or 'RESOURCE_EXHAUSTED' in error_msg or 'quota' in response_text.lower():
-                logging.info("ℹ️  [Gemini API] Rate limit/quota exceeded (API key is valid)")
-                print("ℹ️  [Gemini API] Rate limit/quota exceeded (API key is valid, will work when quota resets)")
-                init_status['gemini_api']['ready'] = True  # Key is valid, just quota issue
-                init_status['gemini_api']['error'] = "Rate limit/quota exceeded"
+                logging.info("ℹ️  [DeepSeek API] Rate limit/quota exceeded (API key is valid)")
+                print("ℹ️  [DeepSeek API] Rate limit/quota exceeded (API key is valid, will work when quota resets)")
+                init_status['deepseek_api']['ready'] = True  # Key is valid, just quota issue
+                init_status['deepseek_api']['error'] = "Rate limit/quota exceeded"
                 return True  # Don't fail initialization - key is valid
             else:
-                logging.warning(f"⚠ [Gemini API] Validation failed: {e}")
-                print("⚠ [Gemini API] Validation failed - key exists, may be network issue")
-                init_status['gemini_api']['ready'] = True
+                logging.warning(f"⚠ [DeepSeek API] Validation failed: {e}")
+                print("⚠ [DeepSeek API] Validation failed - key exists, may be network issue")
+                init_status['deepseek_api']['ready'] = True
                 return True
     except Exception as e:
-        error_msg = f"Gemini API validation failed: {e}"
-        logging.error(f"✗ [Gemini API] {error_msg}")
-        print(f"✗ [Gemini API] {error_msg}")
-        init_status['gemini_api']['error'] = str(e)
+        error_msg = f"DeepSeek API validation failed: {e}"
+        logging.error(f"✗ [DeepSeek API] {error_msg}")
+        print(f"✗ [DeepSeek API] {error_msg}")
+        init_status['deepseek_api']['error'] = str(e)
         return False
 
 def validate_inflection_api():
@@ -353,7 +356,7 @@ def run_parallel_initialization():
     tasks = [
         ("JSON Memory", initialize_json_memory),
         ("Sentiment Analyzer", initialize_sentiment_analyzer),
-        ("Gemini API", validate_gemini_api),
+        ("DeepSeek API", validate_deepseek_api),
         ("Inflection AI", validate_inflection_api),
         ("Quantum API", validate_quantum_api),
     ]
@@ -400,7 +403,7 @@ def run_parallel_initialization():
         logging.info(status_msg)
         print(status_msg)
         
-        if component in ['json_memory', 'sentiment_analyzer', 'gemini_api']:
+        if component in ['json_memory', 'sentiment_analyzer', 'deepseek_api']:
             if not status['ready']:
                 critical_ready = False
         
@@ -437,13 +440,13 @@ def run_parallel_initialization():
 def initialize_components():
     """Initialize Galatea components"""
     global galatea_ai, dialogue_engine, avatar_engine, is_initialized, initializing
-    global current_init_retry, gemini_initialized
+    global current_init_retry, deepseek_initialized
     
     if initializing or is_initialized:
         return
 
-    if missing_gemini_key:
-        logging.error("Initialization aborted: GEMINI_API_KEY missing")
+    if missing_deepseek_key:
+        logging.error("Initialization aborted: DEEPSEEK_API_KEY missing")
         return
         
     initializing = True
@@ -465,19 +468,6 @@ def initialize_components():
         avatar_engine = AvatarEngine()
         avatar_engine.update_avatar(galatea_ai.emotional_state)
         
-        # Start quantum emotion service (background thread)
-        global quantum_emotion_service
-        try:
-            from quantum_emotion_service import QuantumEmotionService
-            quantum_emotion_service = QuantumEmotionService(galatea_ai.emotional_agent)
-            if quantum_emotion_service.start():
-                logging.info("✓ Quantum Emotion Service started")
-            else:
-                logging.info("ℹ️  Quantum Emotion Service not started (no API key or unavailable)")
-        except Exception as e:
-            logging.warning(f"⚠ Could not start Quantum Emotion Service: {e}")
-            quantum_emotion_service = None
-        
         # Check if all components are fully initialized
         init_status = galatea_ai.get_initialization_status()
         
@@ -487,7 +477,7 @@ def initialize_components():
         logging.info(f"Memory System (JSON): {init_status['memory_system']}")
         logging.info(f"Sentiment Analyzer: {init_status['sentiment_analyzer']}")
         logging.info(f"Models Ready: {init_status['models']}")
-        logging.info(f"  - Gemini available: {init_status['gemini_available']}")
+        logging.info(f"  - DeepSeek available: {init_status['deepseek_available']}")
         logging.info(f"  - Inflection AI available: {init_status['inflection_ai_available']}")
         logging.info(f"API Keys Valid: {init_status['api_keys']}")
         logging.info(f"Fully Initialized: {init_status['fully_initialized']}")
@@ -496,9 +486,9 @@ def initialize_components():
         # CRITICAL: Only mark as initialized if ALL components are ready
         # If any component fails, EXIT the application immediately
         if init_status['fully_initialized']:
-            is_initialized = True
+        is_initialized = True
             logging.info("✓ Galatea AI system fully initialized and ready")
-            logging.info(f"Emotions initialized: {galatea_ai.emotional_state}")
+        logging.info(f"Emotions initialized: {galatea_ai.emotional_state}")
         else:
             logging.error("=" * 60)
             logging.error("❌ INITIALIZATION FAILED - EXITING APPLICATION")
@@ -535,7 +525,7 @@ def home():
     # Add error handling for template rendering
     try:
         # Start component initialization if not already started
-        if not is_initialized and not initializing and not missing_gemini_key:
+        if not is_initialized and not initializing and not missing_deepseek_key:
             Thread(target=initialize_components, daemon=True).start()
             
         return render_template('index.html')
@@ -554,10 +544,10 @@ def chat():
         }), 503  # Service Unavailable
     
     # Check if API key is missing
-    if missing_gemini_key:
+    if missing_deepseek_key:
         return jsonify({
-            'error': 'GEMINI_API_KEY is missing. Chat is unavailable.',
-            'status': 'missing_gemini_key',
+            'error': 'DEEPSEEK_API_KEY is missing. Chat is unavailable.',
+            'status': 'missing_deepseek_key',
             'is_initialized': False
         }), 503
     
@@ -720,10 +710,102 @@ def analyze_sentiment(text):
 # Track avatar updates with timestamp
 last_avatar_update = time.time()
 
+def fill_quantum_queue():
+    """Asynchronously fill the quantum numbers queue with 100 numbers"""
+    global quantum_filling, quantum_numbers_queue
+    
+    with quantum_queue_lock:
+        if quantum_filling:
+            return  # Already filling
+        quantum_filling = True
+    
+    def _fill_queue():
+        global quantum_filling
+        try:
+            quantum_api_key = os.getenv("ANU_QUANTUM_API_KEY")
+            if not quantum_api_key:
+                logging.debug("[Quantum Queue] No API key, using pseudo-random")
+                import random
+                with quantum_queue_lock:
+                    while len(quantum_numbers_queue) < 100:
+                        quantum_numbers_queue.append(random.random())
+                return
+            
+            from config import MODEL_CONFIG
+            quantum_config = MODEL_CONFIG.get('quantum', {}) if MODEL_CONFIG else {}
+            api_endpoint = quantum_config.get('api_endpoint', 'https://api.quantumnumbers.anu.edu.au')
+            
+            headers = {"x-api-key": quantum_api_key}
+            params = {"length": 1, "type": "uint8"}
+            
+            numbers_fetched = 0
+            with quantum_queue_lock:
+                current_size = len(quantum_numbers_queue)
+            
+            while numbers_fetched < 100:
+                try:
+                    response = requests.get(api_endpoint, headers=headers, params=params, timeout=5)
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result.get('success') and 'data' in result and len(result['data']) > 0:
+                            normalized = result['data'][0] / 255.0
+                            with quantum_queue_lock:
+                                quantum_numbers_queue.append(normalized)
+                            numbers_fetched += 1
+                        else:
+                            # Fallback to pseudo-random
+                            import random
+                            with quantum_queue_lock:
+                                quantum_numbers_queue.append(random.random())
+                            numbers_fetched += 1
+                    elif response.status_code == 429:
+                        # Rate limited - use pseudo-random
+                        import random
+                        with quantum_queue_lock:
+                            quantum_numbers_queue.append(random.random())
+                        numbers_fetched += 1
+                    else:
+                        # Error - use pseudo-random
+                        import random
+                        with quantum_queue_lock:
+                            quantum_numbers_queue.append(random.random())
+                        numbers_fetched += 1
+                except Exception as e:
+                    logging.debug(f"[Quantum Queue] Error fetching number: {e}, using pseudo-random")
+                    import random
+                    with quantum_queue_lock:
+                        quantum_numbers_queue.append(random.random())
+                    numbers_fetched += 1
+                
+                # Small delay to avoid rate limits
+                time.sleep(0.1)
+            
+            logging.info(f"[Quantum Queue] Filled queue with {numbers_fetched} numbers")
+        except Exception as e:
+            logging.error(f"[Quantum Queue] Error filling queue: {e}")
+        finally:
+            with quantum_queue_lock:
+                quantum_filling = False
+    
+    # Start filling in background thread
+    Thread(target=_fill_queue, daemon=True).start()
+
+def pop_quantum_number():
+    """Pop a quantum number from the queue, or return pseudo-random if empty"""
+    global quantum_numbers_queue
+    
+    with quantum_queue_lock:
+        if len(quantum_numbers_queue) > 0:
+            return quantum_numbers_queue.popleft()
+        else:
+            # Queue is empty, use pseudo-random
+            import random
+            return random.random()
+
 @app.route('/api/avatar')
 def get_avatar():
     """Endpoint to get the current avatar shape and state with enhanced responsiveness"""
-    global last_avatar_update
+    global last_avatar_update, quantum_numbers_queue, quantum_filling
     
     if not is_initialized:
         return jsonify({
@@ -734,6 +816,16 @@ def get_avatar():
         })
     
     try:
+        # Check if quantum queue is empty, fill it asynchronously if needed
+        with quantum_queue_lock:
+            queue_empty = len(quantum_numbers_queue) == 0
+        
+        if queue_empty and not quantum_filling:
+            fill_quantum_queue()
+        
+        # Pop one quantum number to update emotions
+        quantum_num = pop_quantum_number()
+        
         avatar_shape = avatar_engine.avatar_model if avatar_engine else 'Circle'
         
         # Update timestamp when the avatar changes (you would track this in AvatarEngine normally)
@@ -749,6 +841,19 @@ def get_avatar():
             
         # Force avatar update based on emotions if available
         if avatar_engine and galatea_ai:
+            # Apply quantum influence to emotions
+            emotions = ["joy", "sadness", "anger", "fear", "curiosity"]
+            # Use quantum number to influence a random emotion
+            import random
+            emotion_index = int(quantum_num * len(emotions)) % len(emotions)
+            selected_emotion = emotions[emotion_index]
+            
+            # Apply subtle quantum influence (-0.05 to +0.05)
+            influence = (quantum_num - 0.5) * 0.1
+            current_value = galatea_ai.emotional_state[selected_emotion]
+            new_value = max(0.05, min(1.0, current_value + influence))
+            galatea_ai.emotional_state[selected_emotion] = new_value
+            
             # If we have sentiment data, incorporate it into emotional state
             if sentiment_data:
                 # Update emotional state based on sentiment (enhanced mapping)
@@ -759,6 +864,10 @@ def get_avatar():
                 elif sentiment_data["sentiment"] == "angry":
                     # Amplify anger emotion when detected
                     galatea_ai.emotional_state["anger"] = max(galatea_ai.emotional_state["anger"], 0.8)
+            
+            # Save emotional state to JSON
+            if hasattr(galatea_ai, 'emotional_agent'):
+                galatea_ai.emotional_agent._save_to_json()
             
             avatar_engine.update_avatar(galatea_ai.emotional_state)
             avatar_shape = avatar_engine.avatar_model
@@ -785,21 +894,21 @@ def health():
     """Simple health check endpoint to verify the server is running"""
     return jsonify({
         'status': 'ok',
-        'gemini_available': hasattr(galatea_ai, 'gemini_available') and galatea_ai.gemini_available if galatea_ai else False,
+        'deepseek_available': hasattr(galatea_ai, 'deepseek_available') and galatea_ai.deepseek_available if galatea_ai else False,
         'is_initialized': is_initialized,
-        'missing_gemini_key': missing_gemini_key
+        'missing_deepseek_key': missing_deepseek_key
     })
 
 @app.route('/api/availability')
 def availability():
     """Report overall availability state to the frontend"""
-    if missing_gemini_key:
+    if missing_deepseek_key:
         return jsonify({
             'available': False,
-            'status': 'missing_gemini_key',
+            'status': 'missing_deepseek_key',
             'is_initialized': False,
             'initializing': False,
-            'missing_gemini_key': True,
+            'missing_deepseek_key': True,
             'error_page': url_for('error_page')
         })
 
@@ -809,7 +918,7 @@ def availability():
             'status': 'initializing',
             'is_initialized': is_initialized,
             'initializing': initializing,
-            'missing_gemini_key': False
+            'missing_deepseek_key': False
         })
 
     return jsonify({
@@ -817,18 +926,18 @@ def availability():
         'status': 'ready',
         'is_initialized': True,
         'initializing': False,
-        'missing_gemini_key': False
+        'missing_deepseek_key': False
     })
 
 @app.route('/api/is_initialized')
 def is_initialized_endpoint():
     """Lightweight endpoint for polling initialization progress"""
     # Determine current initialization state
-    if missing_gemini_key:
+    if missing_deepseek_key:
         return jsonify({
             'is_initialized': False,
             'initializing': False,
-            'missing_gemini_key': True,
+            'missing_deepseek_key': True,
             'error_page': url_for('error_page'),
             'status': 'missing_api_key'
         })
@@ -838,7 +947,7 @@ def is_initialized_endpoint():
         return jsonify({
             'is_initialized': False,
             'initializing': True,
-            'missing_gemini_key': False,
+            'missing_deepseek_key': False,
             'status': 'initializing_components',
             'message': 'Initializing AI components...'
         })
@@ -848,7 +957,7 @@ def is_initialized_endpoint():
         return jsonify({
             'is_initialized': True,
             'initializing': False,
-            'missing_gemini_key': False,
+            'missing_deepseek_key': False,
             'status': 'ready',
             'message': 'System ready'
         })
@@ -857,7 +966,7 @@ def is_initialized_endpoint():
     return jsonify({
         'is_initialized': False,
         'initializing': True,
-        'missing_gemini_key': False,
+        'missing_deepseek_key': False,
         'status': 'waiting',
         'message': 'Waiting for initialization...'
     })
@@ -870,13 +979,13 @@ def status():
         'initializing': initializing,
         'emotions': galatea_ai.emotional_state if galatea_ai else {'joy': 0.2, 'sadness': 0.2, 'anger': 0.2, 'fear': 0.2, 'curiosity': 0.2},
         'avatar_shape': avatar_engine.avatar_model if avatar_engine and is_initialized else 'Circle',
-        'missing_gemini_key': missing_gemini_key
+        'missing_deepseek_key': missing_deepseek_key
     })
 
 @app.route('/error')
 def error_page():
     """Render an informative error page when the app is unavailable"""
-    return render_template('error.html', missing_gemini_key=missing_gemini_key)
+    return render_template('error.html', missing_deepseek_key=missing_deepseek_key)
 
 if __name__ == '__main__':
     print("Starting Galatea Web Interface...")
@@ -921,7 +1030,7 @@ if __name__ == '__main__':
         print("Application will exit")
         print("=" * 70)
         sys.exit(1)
-    
+
     # Add debug logs for avatar shape changes
     logging.info("Avatar system initialized with default shape.")
 
@@ -932,6 +1041,6 @@ if __name__ == '__main__':
     logging.info("Frontend will poll /api/is_initialized for status")
     print(f"\nFlask server starting on port {port}...")
     print("Frontend will poll /api/is_initialized for status\n")
-    
+
     # Bind to 0.0.0.0 for external access (required for Hugging Face Spaces)
     app.run(host='0.0.0.0', port=port, debug=True)

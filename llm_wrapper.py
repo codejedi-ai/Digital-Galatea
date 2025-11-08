@@ -1,4 +1,4 @@
-"""Custom LLM Wrapper - Direct API calls using requests (no LiteLLM)"""
+"""Custom LLM Wrapper - Direct API calls using requests and OpenAI SDK"""
 import os
 import sys
 import logging
@@ -8,28 +8,35 @@ import requests  # type: ignore[import-untyped]
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import MODEL_CONFIG
 
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    logging.warning("[LLMWrapper] OpenAI SDK not available. DeepSeek API calls will fail.")
+
 class LLMWrapper:
-    """Custom LLM wrapper for Gemini and Inflection AI using direct API calls"""
+    """Custom LLM wrapper for DeepSeek and Inflection AI using direct API calls"""
     
-    def __init__(self, gemini_model=None, inflection_model=None, config=None):
+    def __init__(self, deepseek_model=None, inflection_model=None, config=None):
         """
         Initialize LLM Wrapper with models and configuration
         
         Args:
-            gemini_model: Gemini model name (e.g., 'gemini-2.0-flash-exp')
+            deepseek_model: DeepSeek model name (e.g., 'deepseek-reasoner')
             inflection_model: Inflection AI model name (e.g., 'Pi-3.1')
             config: Configuration dict (optional, will load from MODEL_CONFIG if not provided)
         """
         self.config = config or MODEL_CONFIG or {}
-        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
         self.inflection_ai_api_key = os.getenv("INFLECTION_AI_API_KEY")
         
         # Set models from parameters or config
-        if gemini_model:
-            self.gemini_model = gemini_model
+        if deepseek_model:
+            self.deepseek_model = deepseek_model
         else:
-            gemini_config = self.config.get('gemini', {}) if self.config else {}
-            self.gemini_model = gemini_config.get('model', 'gemini-2.0-flash-exp')
+            deepseek_config = self.config.get('deepseek', {}) if self.config else {}
+            self.deepseek_model = deepseek_config.get('model', 'deepseek-reasoner')
         
         if inflection_model:
             self.inflection_model = inflection_model
@@ -37,15 +44,20 @@ class LLMWrapper:
             inflection_config = self.config.get('inflection_ai', {}) if self.config else {}
             self.inflection_model = inflection_config.get('model', 'Pi-3.1')
         
-        # Remove 'gemini/' prefix if present
-        if self.gemini_model.startswith('gemini/'):
-            self.gemini_model = self.gemini_model.replace('gemini/', '')
+        # Initialize OpenAI client for DeepSeek
+        if OPENAI_AVAILABLE and self.deepseek_api_key:
+            self.deepseek_client = OpenAI(
+                api_key=self.deepseek_api_key,
+                base_url="https://api.deepseek.com"
+            )
+        else:
+            self.deepseek_client = None
         
-        logging.info(f"[LLMWrapper] Initialized with Gemini model: {self.gemini_model}, Inflection model: {self.inflection_model}")
+        logging.info(f"[LLMWrapper] Initialized with DeepSeek model: {self.deepseek_model}, Inflection model: {self.inflection_model}")
     
-    def call_gemini(self, messages, temperature=0.7, max_tokens=1024):
+    def call_deepseek(self, messages, temperature=0.7, max_tokens=1024):
         """
-        Call Gemini API directly using requests
+        Call DeepSeek API using OpenAI SDK
         
         Args:
             messages: List of message dicts with 'role' and 'content'
@@ -55,97 +67,53 @@ class LLMWrapper:
         Returns:
             Response text or None if failed
         """
-        if not self.gemini_api_key:
-            logging.error("[LLMWrapper] GEMINI_API_KEY not found")
+        if not self.deepseek_api_key:
+            logging.error("[LLMWrapper] DEEPSEEK_API_KEY not found")
+            return None
+        
+        if not OPENAI_AVAILABLE:
+            logging.error("[LLMWrapper] OpenAI SDK not available. Install with: pip install openai")
+            return None
+        
+        if not self.deepseek_client:
+            logging.error("[LLMWrapper] DeepSeek client not initialized")
             return None
         
         # Use the model set during initialization
-        model = self.gemini_model
-        
-        # Gemini API endpoint
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        
-        headers = {
-            "Content-Type": "application/json",
-            "X-goog-api-key": self.gemini_api_key
-        }
-        
-        # Convert messages to Gemini format
-        contents = []
-        system_instruction = None
-        
-        for msg in messages:
-            role = msg.get('role', 'user')
-            content = msg.get('content', '')
-            
-            if role == 'system':
-                system_instruction = content
-            elif role == 'user':
-                contents.append({
-                    "role": "user",
-                    "parts": [{"text": content}]
-                })
-            elif role == 'assistant':
-                contents.append({
-                    "role": "model",
-                    "parts": [{"text": content}]
-                })
-        
-        # Build request payload
-        payload = {
-            "contents": contents,
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens
-            }
-        }
-        
-        # Add system instruction if present
-        if system_instruction:
-            payload["systemInstruction"] = {
-                "parts": [{"text": system_instruction}]
-            }
+        model = self.deepseek_model
         
         try:
-            logging.info(f"[LLMWrapper] Calling Gemini API: {model}")
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            logging.info(f"[LLMWrapper] Calling DeepSeek API: {model}")
+            response = self.deepseek_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=False
+            )
             
-            if response.status_code == 200:
-                result = response.json()
-                
-                # Extract text from Gemini response
-                if 'candidates' in result and len(result['candidates']) > 0:
-                    candidate = result['candidates'][0]
-                    if 'content' in candidate and 'parts' in candidate['content']:
-                        parts = candidate['content']['parts']
-                        if len(parts) > 0 and 'text' in parts[0]:
-                            text = parts[0]['text']
-                            logging.info("[LLMWrapper] ✓ Gemini response received")
-                            return text.strip()
-                
-                logging.error(f"[LLMWrapper] Unexpected Gemini response format: {result}")
-                return None
-            else:
-                # Raise exception with status code and response text so validation can catch it
-                error_text = response.text
-                logging.error(f"[LLMWrapper] Gemini API returned status {response.status_code}: {error_text}")
-                # Create exception with status code info for validation to catch
-                api_error = Exception(f"Gemini API status {response.status_code}: {error_text}")
-                api_error.status_code = response.status_code
-                api_error.response_text = error_text
-                raise api_error
-                
-        except requests.RequestException as e:
-            # Network/request errors - log and return None
-            logging.error(f"[LLMWrapper] Network error calling Gemini API: {e}")
+            if response and response.choices and len(response.choices) > 0:
+                text = response.choices[0].message.content
+                if text:
+                    logging.info("[LLMWrapper] ✓ DeepSeek response received")
+                    return text.strip()
+            
+            logging.error(f"[LLMWrapper] Unexpected DeepSeek response format: {response}")
             return None
+                
         except Exception as e:
-            # Re-raise status code errors so validation can catch them
-            if hasattr(e, 'status_code'):
-                raise
-            # Other errors - log and return None
-            logging.error(f"[LLMWrapper] Error calling Gemini API: {e}")
-            return None
+            # Check if it's an API error with status code
+            error_msg = str(e)
+            status_code = getattr(e, 'status_code', None)
+            response_text = getattr(e, 'response_text', error_msg)
+            
+            # Create exception with status code info for validation to catch
+            api_error = Exception(f"DeepSeek API error: {error_msg}")
+            if status_code:
+                api_error.status_code = status_code
+            api_error.response_text = response_text
+            logging.error(f"[LLMWrapper] Error calling DeepSeek API: {e}")
+            raise api_error
     
     def call_inflection_ai(self, context_parts):
         """

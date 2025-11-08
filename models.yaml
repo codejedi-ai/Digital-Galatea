@@ -1,17 +1,17 @@
 # Galatea AI Model Configuration
 # This file contains all model settings and hyperparameters
 
-# Gemini Agent Configuration (Thinking/Analysis)
-gemini:
+# DeepSeek Agent Configuration (Thinking/Analysis)
+deepseek:
   # Single model to use for thinking/analysis
-  model: "gemini-2.0-flash-exp"
+  model: "deepseek-reasoner"
   
   # Hyperparameters
   temperature: 0.5  # Lower temperature for more focused thinking
   max_tokens: 200
   
-  # API endpoint (automatically constructed)
-  api_endpoint: "https://generativelanguage.googleapis.com/v1beta/models"
+  # API endpoint (using OpenAI SDK)
+  api_endpoint: "https://api.deepseek.com"
 
 # Pi/Phi Agent Configuration (Response Generation)
 inflection_ai:
