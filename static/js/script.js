@@ -87,14 +87,14 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    if (data.missing_gemini_key) {
-                        showStatusMessage('GEMINI_API_KEY missing. Chat will remain unavailable until it is configured.', true);
+                    if (data.missing_deepseek_key) {
+                        showStatusMessage('DEEPSEEK_API_KEY missing. Chat will remain unavailable until it is configured.', true);
                         return;
                     }
-                    if (data.gemini_available) {
-                        showStatusMessage('Connected to Gemini API', false);
+                    if (data.deepseek_available) {
+                        showStatusMessage('Connected to DeepSeek API', false);
                     } else {
-                        showStatusMessage('Warning: Gemini API not available. Using fallback responses.', true);
+                        showStatusMessage('Warning: DeepSeek API not available. Using fallback responses.', true);
                     }
                 } else {
                     showStatusMessage('Server health check failed', true);
@@ -168,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (!data.available) {
-                    if (data.status === 'missing_gemini_key') {
+                    if (data.status === 'missing_deepseek_key') {
                         const errorPath = data.error_page || '/error';
                         window.location.href = `${API_BASE_URL}${errorPath}`;
                         return;
@@ -327,7 +327,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch(buildApiUrl('/api/is_initialized'))
             .then(response => response.json())
             .then(data => {
-                if (data.missing_gemini_key) {
+                if (data.missing_deepseek_key) {
                     const errorPath = data.error_page || '/error';
                     window.location.href = `${API_BASE_URL}${errorPath}`;
                     return;

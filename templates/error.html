@@ -69,8 +69,8 @@
 <body>
     <div class="error-card">
         <h1>Galatea AI is Unavailable</h1>
-        {% if missing_gemini_key %}
-        <p>We couldn't find a <code>GEMINI_API_KEY</code> in the current environment.</p>
+        {% if missing_deepseek_key %}
+        <p>We couldn't find a <code>DEEPSEEK_API_KEY</code> in the current environment.</p>
         <p>Please add the key and reload the page to continue.</p>
 
         <div class="steps">
@@ -78,14 +78,14 @@
             <p><strong>Local setup:</strong></p>
             <ol>
                 <li>Create a <code>.env</code> file if it doesn't exist.</li>
-                <li>Add <code>GEMINI_API_KEY=&lt;your_key_here&gt;</code> to the file.</li>
+                <li>Add <code>DEEPSEEK_API_KEY=&lt;your_key_here&gt;</code> to the file.</li>
                 <li>Restart the Flask app.</li>
             </ol>
 
             <p><strong>Hugging Face Spaces:</strong></p>
             <ol>
                 <li>Open the Space settings and go to <em>Repository secrets</em>.</li>
-                <li>Add a secret named <code>GEMINI_API_KEY</code> with your Gemini API key.</li>
+                <li>Add a secret named <code>DEEPSEEK_API_KEY</code> with your DeepSeek API key.</li>
                 <li>Restart or reload the Space.</li>
             </ol>
         </div>
