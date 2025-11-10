@@ -22,9 +22,6 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # Copy the entire application
 COPY . .
 
-# Download NLTK data during build with error handling
-RUN python download_nltk_data.py
-
 # Expose the port the app runs on
 EXPOSE 7860
 
