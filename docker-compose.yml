@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  digital-galatea:
+    image: codejedi/digital-galatea:latest
+    container_name: digital-galatea
+    ports:
+      - "7860:7860"
+    environment:
+      # Required - DeepSeek API Key
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      # Required - Inflection AI API Key
+      - INFLECTION_AI_API_KEY=${INFLECTION_AI_API_KEY}
+      # Optional - Azure Text Analytics
+      - AZURE_TEXT_ANALYTICS_KEY=${AZURE_TEXT_ANALYTICS_KEY:-}
+      - AZURE_TEXT_ANALYTICS_ENDPOINT=${AZURE_TEXT_ANALYTICS_ENDPOINT:-}
+      # Optional - Quantum API
+      - ANU_QUANTUM_API_KEY=${ANU_QUANTUM_API_KEY:-}
+      # Optional - Port (defaults to 7860)
+      - PORT=${PORT:-7860}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
