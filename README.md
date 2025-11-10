@@ -36,7 +36,7 @@ Digital Galatea is a conversational AI with a dynamic emotional model. It featur
 The easiest way to run Digital Galatea is using the pre-built Docker image from Docker Hub:
 
 ```bash
-docker pull codejedi/digital-galatea:latest
+docker pull codejediondockerhub/digital-galatea:latest
 docker run -d \
   --name digital-galatea \
   -p 7860:7860 \
@@ -44,7 +44,7 @@ docker run -d \
   -e INFLECTION_AI_API_KEY=your_inflection_api_key \
   -e AZURE_TEXT_ANALYTICS_KEY=your_azure_key \
   -e AZURE_TEXT_ANALYTICS_ENDPOINT=https://your-resource.cognitiveservices.azure.com/ \
-  codejedi/digital-galatea:latest
+  codejediondockerhub/digital-galatea:latest
 ```
 
 Or using docker-compose (see `docker-compose.yml`):
@@ -89,7 +89,7 @@ docker run -d \
   -e INFLECTION_AI_API_KEY=your-inflection-key \
   -e AZURE_TEXT_ANALYTICS_KEY=your-azure-key \
   -e AZURE_TEXT_ANALYTICS_ENDPOINT=https://your-resource.cognitiveservices.azure.com/ \
-  codejedi/digital-galatea:latest
+  codejediondockerhub/digital-galatea:latest
 ```
 
 #### Using Environment File
@@ -122,10 +122,10 @@ docker run -d --name digital-galatea -p 7860:7860 --env-file .env codejedi/digit
 
 The image is available on Docker Hub:
 
-**Image**: `codejedi/digital-galatea:latest`
+**Image**: `codejediondockerhub/digital-galatea:latest`
 
 ```bash
-docker pull codejedi/digital-galatea:latest
+docker pull codejediondockerhub/digital-galatea:latest
 ```
 
 ### Building and Pushing to Docker Hub
@@ -134,13 +134,13 @@ If you want to build and push your own version:
 
 ```bash
 # Build the image
-docker build -t codejedi/digital-galatea:latest .
+docker build -t codejediondockerhub/digital-galatea:latest .
 
 # Login to Docker Hub
 docker login
 
 # Push to Docker Hub
-docker push codejedi/digital-galatea:latest
+docker push codejediondockerhub/digital-galatea:latest
 ```
 
 ## Local Development

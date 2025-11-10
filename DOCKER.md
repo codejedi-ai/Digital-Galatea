@@ -12,7 +12,7 @@ docker run -d \
   -p 7860:7860 \
   -e DEEPSEEK_API_KEY=your_deepseek_api_key \
   -e INFLECTION_AI_API_KEY=your_inflection_api_key \
-  codejedi/digital-galatea:latest
+  codejediondockerhub/digital-galatea:latest
 ```
 
 ### Using Docker Compose
@@ -34,7 +34,7 @@ docker build -t digital-galatea:latest .
 ### Build and Tag for Docker Hub
 
 ```bash
-docker build -t codejedi/digital-galatea:latest .
+docker build -t codejediondockerhub/digital-galatea:latest .
 ```
 
 ## Publishing to Docker Hub
@@ -46,18 +46,18 @@ docker build -t codejedi/digital-galatea:latest .
 
 2. **Tag the Image** (if not already tagged)
    ```bash
-   docker tag digital-galatea:latest codejedi/digital-galatea:latest
+   docker tag digital-galatea:latest codejediondockerhub/digital-galatea:latest
    ```
 
 3. **Push to Docker Hub**
    ```bash
-   docker push codejedi/digital-galatea:latest
+   docker push codejediondockerhub/digital-galatea:latest
    ```
 
 4. **Push with Version Tag** (optional)
    ```bash
-   docker tag digital-galatea:latest codejedi/digital-galatea:v1.0.0
-   docker push codejedi/digital-galatea:v1.0.0
+   docker tag digital-galatea:latest codejediondockerhub/digital-galatea:v1.0.0
+   docker push codejediondockerhub/digital-galatea:v1.0.0
    ```
 
 ## Environment Variables
@@ -84,7 +84,7 @@ docker run -d \
   -p 7860:7860 \
   -e DEEPSEEK_API_KEY=your_key \
   -e INFLECTION_AI_API_KEY=your_key \
-  codejedi/digital-galatea:latest
+  codejediondockerhub/digital-galatea:latest
 ```
 
 ### With Environment File
@@ -94,7 +94,7 @@ docker run -d \
   --name digital-galatea \
   -p 7860:7860 \
   --env-file .env \
-  codejedi/digital-galatea:latest
+  codejediondockerhub/digital-galatea:latest
 ```
 
 ### With Volume for Persistence
@@ -105,7 +105,7 @@ docker run -d \
   -p 7860:7860 \
   -v $(pwd)/data:/app/data \
   --env-file .env \
-  codejedi/digital-galatea:latest
+  codejediondockerhub/digital-galatea:latest
 ```
 
 ## Container Management
@@ -185,6 +185,6 @@ docker run -d \
   --memory="2g" \
   --cpus="2" \
   --env-file .env \
-  codejedi/digital-galatea:latest
+  codejediondockerhub/digital-galatea:latest
 ```
 

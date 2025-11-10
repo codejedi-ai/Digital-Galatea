@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   digital-galatea:
-    image: codejedi/digital-galatea:latest
+    image: codejediondockerhub/digital-galatea:latest
     container_name: digital-galatea
     ports:
       - "7860:7860"
