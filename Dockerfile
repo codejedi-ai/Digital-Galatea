@@ -23,21 +23,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 COPY . .
 
 # Download NLTK data during build with error handling
-RUN python -c "import nltk; import os; \
-    nltk_data_dir = '/root/nltk_data'; \
-    os.makedirs(nltk_data_dir, exist_ok=True); \
-    nltk.data.path.append(nltk_data_dir); \
-    try: \
-        nltk.download('punkt', quiet=True); \
-        print('Downloaded punkt'); \
-    except Exception as e: \
-        print(f'Failed to download punkt: {e}'); \
-    try: \
-        nltk.download('vader_lexicon', quiet=True); \
-        print('Downloaded vader_lexicon'); \
-    except Exception as e: \
-        print(f'Failed to download vader_lexicon: {e}'); \
-    print('NLTK download step completed')"
+RUN python download_nltk_data.py
 
 # Expose the port the app runs on
 EXPOSE 7860
