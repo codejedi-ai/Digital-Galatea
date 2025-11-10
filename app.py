@@ -1062,5 +1062,7 @@ if __name__ == '__main__':
     print(f"\nFlask server starting on port {port}...")
     print("Frontend will poll /api/is_initialized for status\n")
 
-    # Bind to 0.0.0.0 for external access (required for Hugging Face Spaces)
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # Bind to 0.0.0.0 for external access (required for Heroku/Hugging Face Spaces)
+    # Disable debug mode in production (Heroku sets DYNO environment variable)
+    debug_mode = os.environ.get('DYNO') is None  # Only debug when not on Heroku
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)

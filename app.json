@@ -1,0 +1,41 @@
+{
+  "name": "Digital Galatea AI",
+  "description": "A conversational AI with a dynamic emotional model",
+  "repository": "https://github.com/codejedi-ai/Digital-Galatea",
+  "logo": "https://raw.githubusercontent.com/codejedi-ai/Digital-Galatea/main/static/css/style.css",
+  "keywords": ["python", "flask", "ai", "chatbot", "emotional-ai"],
+  "env": {
+    "DEEPSEEK_API_KEY": {
+      "description": "Your DeepSeek API key",
+      "required": true
+    },
+    "INFLECTION_AI_API_KEY": {
+      "description": "Your Inflection AI API key",
+      "required": true
+    },
+    "AZURE_TEXT_ANALYTICS_KEY": {
+      "description": "Your Azure Text Analytics key (optional)",
+      "required": false
+    },
+    "AZURE_TEXT_ANALYTICS_ENDPOINT": {
+      "description": "Your Azure Text Analytics endpoint (optional)",
+      "required": false
+    },
+    "ANU_QUANTUM_API_KEY": {
+      "description": "Your ANU Quantum API key (optional)",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "standard-1x"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+}
+
