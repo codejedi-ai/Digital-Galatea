@@ -2,6 +2,7 @@
 import os
 import sys
 import logging
+from dotenv import load_dotenv
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,6 +23,9 @@ class AzureTextAnalyticsAgent:
             from azure.ai.textanalytics import TextAnalyticsClient
             from azure.core.credentials import AzureKeyCredential
             
+            # Load environment variables so Azure credentials from .env are available
+            load_dotenv()
+
             key = os.getenv("AZURE_TEXT_ANALYTICS_KEY")
             endpoint = os.getenv("AZURE_TEXT_ANALYTICS_ENDPOINT")
             

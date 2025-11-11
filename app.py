@@ -165,31 +165,19 @@ def initialize_sentiment_analyzer():
     try:
         logging.info("🔄 [Sentiment Analyzer] Starting initialization...")
         print("🔄 [Sentiment Analyzer] Starting initialization...")
-        try:
-            from transformers import pipeline
-            analyzer = pipeline(
-                "sentiment-analysis",
-                model="distilbert/distilbert-base-uncased-finetuned-sst-2-english"
-            )
-            result = analyzer("test")
-            logging.info("✓ [Sentiment Analyzer] Hugging Face model loaded")
-            print("✓ [Sentiment Analyzer] Hugging Face model loaded")
-            init_status['sentiment_analyzer']['ready'] = True
-            return True
-        except ImportError:
+        from agents.sentiment_agent import SentimentAgent
+
+        agent = SentimentAgent()
+
+        if agent.azure_agent.is_ready():
+            logging.info("✓ [Sentiment Analyzer] Azure Text Analytics ready")
+            print("✓ [Sentiment Analyzer] Azure Text Analytics ready")
+        else:
             logging.info("✓ [Sentiment Analyzer] Using fallback (NLTK VADER)")
             print("✓ [Sentiment Analyzer] Using fallback (NLTK VADER)")
-            init_status['sentiment_analyzer']['ready'] = True
-            return True
-        except Exception as e:
-            error_msg = str(e)
-            if 'np.float_' in error_msg or 'NumPy 2' in error_msg or '_ARRAY_API' in error_msg:
-                logging.warning(f"⚠ [Sentiment Analyzer] NumPy compatibility issue - using fallback")
-                print("⚠ [Sentiment Analyzer] NumPy compatibility issue - using fallback")
-                init_status['sentiment_analyzer']['ready'] = True
-                return True
-            else:
-                raise
+
+        init_status['sentiment_analyzer']['ready'] = True
+        return True
     except Exception as e:
         error_msg = f"Sentiment analyzer initialization failed: {e}"
         logging.warning(f"⚠ [Sentiment Analyzer] {error_msg} - using fallback")
@@ -506,9 +494,9 @@ def initialize_components():
         # CRITICAL: Only mark as initialized if ALL components are ready
         # If any component fails, EXIT the application immediately
         if init_status['fully_initialized']:
-            is_initialized = True
+        is_initialized = True
             logging.info("✓ Galatea AI system fully initialized and ready")
-            logging.info(f"Emotions initialized: {galatea_ai.emotional_state}")
+        logging.info(f"Emotions initialized: {galatea_ai.emotional_state}")
         else:
             logging.error("=" * 60)
             logging.error("❌ INITIALIZATION FAILED - EXITING APPLICATION")

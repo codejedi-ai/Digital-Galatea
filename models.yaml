@@ -28,9 +28,10 @@ inflection_ai:
 
 # Sentiment Analysis Configuration
 sentiment:
-  # Primary model (Hugging Face)
-  primary_model: "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
-  # Fallback: NLTK VADER (automatic if primary fails)
+  # Uses Azure Text Analytics when credentials are provided
+  preferred: "azure_text_analytics"
+  # Automatically falls back to NLTK VADER if Azure is unavailable
+  fallback: "nltk_vader"
 
 # Memory System Configuration (JSON only)
 memory:
